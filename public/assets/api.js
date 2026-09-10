@@ -5,11 +5,21 @@ export const esc = (value) =>
 		(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
 	)
 export function message(value, error = false) {
-	const node = document.querySelector('#message')
+	const modal = [...document.querySelectorAll('dialog[open]')].at(-1)
+	let node = modal ? modal.querySelector('.dialog-message') : document.querySelector('#message')
+	if (modal && !node && value) {
+		node = document.createElement('p')
+		node.className = 'dialog-message'
+		const heading = modal.querySelector('h2')
+		if (heading) heading.after(node)
+		else modal.prepend(node)
+	}
 	if (node) {
+		node.setAttribute('role', error ? 'alert' : 'status')
+		node.setAttribute('aria-live', error ? 'assertive' : 'polite')
 		node.textContent = value
 		node.classList.toggle('error', error)
-	} else window.alert(value)
+	} else if (value) window.alert(value)
 }
 export async function api(path, { method = 'GET', body, headers = {}, cookie = false } = {}) {
 	const url = new URL(path, location.origin)
@@ -42,6 +52,7 @@ export const post = (path, body = {}) => api(path, { method: 'POST', body })
 export function bind(form, fn) {
 	form.addEventListener('submit', async (event) => {
 		event.preventDefault()
+		form.closest('dialog')?.querySelector('.dialog-message')?.remove()
 		const button = form.querySelector('button[type=submit],button:not([type])')
 		if (button) button.disabled = true
 		try {

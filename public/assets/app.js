@@ -168,7 +168,7 @@ async function listManager() {
 function editList(list) {
 	const d = dialog(
 		list ? 'Edit list' : 'New list',
-		`<form><label>Name<input name="title" maxlength="100" required value="${esc(list?.title)}"></label><label>Replies<select name="replies_policy"><option value="list">List members</option><option value="followed">People you follow</option><option value="none">No replies</option></select></label><label><input type="checkbox" name="exclusive" ${list?.exclusive ? 'checked' : ''}> Hide these people from Home</label><button>Save</button></form>`
+		`<form><label>Name<input name="title" maxlength="64" required value="${esc(list?.title)}"></label><label>Replies<select name="replies_policy"><option value="list">List members</option><option value="followed">People you follow</option><option value="none">No replies</option></select></label><label><input type="checkbox" name="exclusive" ${list?.exclusive ? 'checked' : ''}> Hide these people from Home</label><button>Save</button></form>`
 	)
 	d.querySelector('[name=replies_policy]').value = list?.replies_policy ?? 'list'
 	bind(d.querySelector('form'), async (f) => {
