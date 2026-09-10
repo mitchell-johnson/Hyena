@@ -166,6 +166,7 @@ export interface JobRow {
 		| 'federation.message'
 		| 'federation.extension'
 		| 'federation.send'
+		| 'federation.history'
 		| 'notification.push'
 		| 'schedule.publish'
 		| 'account.event'

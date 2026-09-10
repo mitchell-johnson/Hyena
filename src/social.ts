@@ -7,6 +7,8 @@ import { ApiError, boolField, readInput, stringField } from './http'
 import { accountJSON } from './serializers'
 import { blocked } from './policy'
 import { outboundStatement } from './federation/outbox'
+import { followHistoryStatement } from './federation/history'
+import { digest } from './auth/crypto'
 import { notificationStatements } from './notifications'
 import { severanceStatements } from './severance'
 import { domainPolicy } from './moderation-policy'
@@ -214,8 +216,19 @@ for (const action of ['authorize', 'reject'] as const)
 						object: accountUri(c.env, a),
 					},
 				},
-				[target.id]
+				[target.id],
+				(action === 'authorize' ? 'accept-' : 'reject-') + (await digest(f.activity_uri))
 			),
+			...(action === 'authorize' && target.domain
+				? [
+						await followHistoryStatement(c.env, {
+							actorId: a.id,
+							followerId: target.id,
+							followUri: f.activity_uri,
+							acceptedAt: now(),
+						}),
+					]
+				: []),
 			c.env.DB.prepare(
 				"UPDATE notifications SET dismissed=1 WHERE account_id=? AND from_account_id=? AND type='follow_request'"
 			).bind(a.id, target.id),

@@ -28,6 +28,7 @@ import { nextId } from '../db'
 import { ApiError } from '../http'
 import { digest } from '../auth/crypto'
 import { outboundStatement } from './outbox'
+import { followHistoryStatement } from './history'
 import { notificationStatements } from '../notifications'
 import { migrateLocalFollowers } from '../lifecycle'
 import { domainPolicy } from '../moderation-policy'
@@ -463,7 +464,13 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 						{ type: 'Accept', actor: accountUri(env, target), object: serialized },
 						[actor.id],
 						'accept-' + (await digest(activity.id.href))
-					)
+					),
+					await followHistoryStatement(env, {
+						actorId: target.id,
+						followerId: actor.id,
+						followUri: activity.id.href,
+						acceptedAt: now(),
+					})
 				)
 			await env.DB.batch(statements)
 		}
