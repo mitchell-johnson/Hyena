@@ -13,6 +13,43 @@ import { receiveExtension } from './federation/consent'
 import { fetchCard } from './community'
 import { processImport, processExport } from './lifecycle'
 
+interface JobErrorDiagnostic {
+	type: string
+	status?: number
+	code?: string
+	frames?: { file: string; line: number; column: number; function?: string }[]
+	cause?: JobErrorDiagnostic
+	errors?: JobErrorDiagnostic[]
+}
+export function jobErrorDiagnostic(error: unknown, depth = 0): JobErrorDiagnostic {
+	if (!(error instanceof Error)) return { type: typeof error }
+	const token = (value: unknown) => (typeof value === 'string' && /^[\w.-]{1,80}$/.test(value) ? value : undefined),
+		value = error as Error & { status?: number; statusCode?: number; code?: unknown },
+		status = value.statusCode ?? value.status,
+		diagnostic: JobErrorDiagnostic = { type: error instanceof ApiError ? 'ApiError' : (token(error.name) ?? 'Error') }
+	if (Number.isInteger(status) && status! >= 100 && status! <= 599) diagnostic.status = status
+	if (token(value.code)) diagnostic.code = token(value.code)
+	// Error messages and stack headings may contain response bodies, activity
+	// contents, or credentials. Retain only bounded JavaScript callsite data.
+	diagnostic.frames = (error.stack ?? '')
+		.split('\n')
+		.slice(1)
+		.flatMap((frame) => {
+			const location = /^\s+at .*[/(]([\w.-]+\.[cm]?[jt]s):(\d+):(\d+)\)?$/.exec(frame),
+				bare = /^\s+at ([\w.-]+\.[cm]?[jt]s):(\d+):(\d+)$/.exec(frame),
+				match = location ?? bare,
+				name = /^\s+at (?:async )?([\w.$<>]+) \(/.exec(frame)?.[1]
+			return match
+				? [{ file: match[1]!, line: Number(match[2]), column: Number(match[3]), ...(name ? { function: name } : {}) }]
+				: []
+		})
+		.slice(0, 8)
+	if (depth < 3 && error.cause !== undefined) diagnostic.cause = jobErrorDiagnostic(error.cause, depth + 1)
+	if (depth < 3 && error instanceof AggregateError)
+		diagnostic.errors = error.errors.slice(0, 3).map((cause) => jobErrorDiagnostic(cause, depth + 1))
+	return diagnostic
+}
+
 export function jobStatement(
 	env: Env,
 	id: string,
@@ -76,6 +113,17 @@ export async function executeJob(env: Env, id: string) {
 		.bind(lease, now + 300_000, now, id, now, now)
 		.first<JobRow>()
 	if (!job) return
+	// A long Retry-After wakes at the delivery deadline only to expire the
+	// task. Do not send earlier than requested or hold later ordered work forever.
+	if (job.kind === 'federation.message' && now - (job.first_attempt_at ?? now) >= 7 * 86400000) {
+		await run(
+			env,
+			"UPDATE jobs SET state='dead',lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error='Remote delivery retry limit reached' WHERE id=? AND lease_token=?",
+			id,
+			lease
+		)
+		return
+	}
 	const raw = parsed<Record<string, unknown>>(job.payload, {}),
 		message = raw.message as { type?: string; activity?: Record<string, unknown> } | undefined
 	const order =
@@ -153,11 +201,15 @@ export async function executeJob(env: Env, id: string) {
 			const status = await env.DB.prepare('SELECT * FROM statuses WHERE id=?').bind(payload.statusId).first<StatusRow>()
 			if (status) await statusEvent(env, status)
 		} else if (job.kind === 'federation.message')
-			await federationMessage(env, {
-				message: payload.messageCipher
-					? await unseal<import('@fedify/fedify').Message>(env, payload.messageCipher)
-					: payload.message,
-			})
+			await federationMessage(
+				env,
+				{
+					message: payload.messageCipher
+						? await unseal<import('@fedify/fedify').Message>(env, payload.messageCipher)
+						: payload.message,
+				},
+				{ id, token: lease }
+			)
 		else if (job.kind === 'federation.extension') await receiveExtension(env, payload)
 		else if (job.kind === 'card.fetch' && payload.statusId) await fetchCard(env, payload.statusId)
 		else if (job.kind === 'federation.send') await sendStored(env, payload)
@@ -169,7 +221,7 @@ export async function executeJob(env: Env, id: string) {
 		else if (job.kind === 'email.send') await sendEmail(env, JSON.parse(job.payload))
 		else throw new ApiError(422, 'Invalid durable job payload')
 		await env.DB.prepare(
-			`UPDATE jobs SET state='done',completed_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL WHERE id=? AND lease_token=?`
+			`UPDATE jobs SET state='done',completed_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error=NULL WHERE id=? AND lease_token=?`
 		)
 			.bind(Date.now(), id, lease)
 			.run()
@@ -179,6 +231,16 @@ export async function executeJob(env: Env, id: string) {
 			Date.now() - (job.first_attempt_at ?? now) >= 7 * 86400000 ||
 			job.attempt >= 100
 		const reason = error instanceof ApiError ? error.message : 'Processing failed; inspect provider health and retry'
+		console.error(
+			JSON.stringify({
+				event: 'job_failed',
+				jobId: id,
+				kind: job.kind,
+				attempt: job.attempt,
+				terminal,
+				error: jobErrorDiagnostic(error),
+			})
+		)
 		const failure = env.DB.prepare(
 			`UPDATE jobs SET state=?,available_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error=? WHERE id=? AND lease_token=?`
 		).bind(

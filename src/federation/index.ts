@@ -1,7 +1,7 @@
 import { currentRecipients, filterQueued } from './delivery-policy'
 import { domainPolicy } from '../moderation-policy'
 import { accountDomain, isLocalAccountDomain } from '../identity'
-import { createFederationBuilder, type Context, type Message } from '@fedify/fedify'
+import { createExponentialBackoffPolicy, createFederationBuilder, type Context, type Message } from '@fedify/fedify'
 import { federation as honoFederation } from '@fedify/hono'
 import {
 	Activity,
@@ -25,14 +25,14 @@ import type { AccountRow, AppEnv, Env, StatusRow } from '../types'
 import { accountById, accountUri, all, now, one, parsed, statusUri } from '../data'
 import { ApiError } from '../http'
 import { actorKeys } from './keys'
-import { D1KvStore, D1MessageQueue } from './storage'
+import { D1KvStore, D1MessageQueue, type QueueJobLease } from './storage'
 import { visible } from '../policy'
 import { receive, persistActor } from './receive'
 import { activityObject } from './objects'
 import { deliverExtension } from './consent'
 import { blocked } from '../policy'
 import { COLLECTION_CONTEXT } from '../collections'
-import { outboundStatement } from './outbox'
+import { activityOrderingKey, outboundStatement } from './outbox'
 
 export async function actorDocument(env: Env, a: AccountRow) {
 	const ctx = (await federation(env)).createContext(new Request(env.PUBLIC_ORIGIN), env),
@@ -235,11 +235,15 @@ builder.setNodeInfoDispatcher('/nodeinfo/2.1', async (ctx) => ({
 }))
 builder.setInboxListeners('/users/{identifier}/inbox', '/inbox').on(Activity, receive)
 
-export async function federation(env: Env) {
+const outboxRetryPolicy = createExponentialBackoffPolicy({ maxAttempts: Infinity })
+export async function federation(env: Env, processing?: QueueJobLease) {
 	return builder.build({
 		origin: { webOrigin: env.PUBLIC_ORIGIN, handleHost: accountDomain(env) },
 		kv: new D1KvStore(env),
-		queue: new D1MessageQueue(env),
+		queue: new D1MessageQueue(env, processing),
+		// D1 owns the attempt and age limits, including administrator retries.
+		// Fedify must not silently abandon a task before the ledger records it.
+		outboxRetryPolicy: (context) => outboxRetryPolicy({ ...context, attempts: Math.min(context.attempts, 20) }),
 		manuallyStartQueue: true,
 		allowPrivateAddress: false,
 	})
@@ -255,9 +259,9 @@ export async function federationMiddleware(c: HonoContext<AppEnv>, next: () => P
 	}
 	return honoFederation(await federation(c.env), () => c.env)(c, next)
 }
-export async function federationMessage(env: Env, payload: { message: Message }) {
+export async function federationMessage(env: Env, payload: { message: Message }, processing?: QueueJobLease) {
 	const current = await filterQueued(env, payload.message)
-	if (current) await (await federation(env)).processQueuedTask(env, current)
+	if (current) await (await federation(env, processing)).processQueuedTask(env, current)
 }
 export async function resolveAccount(env: Env, handle: string, context?: Context<Env>): Promise<AccountRow> {
 	const parts = handle.replace(/^@/, '').split('@')
@@ -315,10 +319,7 @@ export async function sendStored(
 	if (recipients.length)
 		await ctx.sendActivity({ identifier: a.username }, recipients, await Activity.fromJsonLd(payload.activity, ctx), {
 			preferSharedInbox: false,
-			orderingKey:
-				typeof payload.activity.object === 'string'
-					? payload.activity.object
-					: String((payload.activity.object as Record<string, unknown> | undefined)?.id ?? payload.activity.actor),
+			orderingKey: activityOrderingKey(payload.activity),
 			excludeBaseUris: [new URL(env.PUBLIC_ORIGIN)],
 		})
 }

@@ -77,7 +77,10 @@ export class D1KvStore implements KvStore {
 }
 export class D1MessageQueue implements MessageQueue {
 	readonly nativeRetrial = true
-	constructor(private env: Env) {}
+	constructor(
+		private env: Env,
+		private processing?: QueueJobLease
+	) {}
 	async enqueue(message: unknown, options?: MessageQueueEnqueueOptions) {
 		const time = Date.now(),
 			m = message as import('@fedify/fedify').Message,
@@ -94,12 +97,31 @@ export class D1MessageQueue implements MessageQueue {
 					m.type === 'outbox' ? m.inbox : m.type === 'fanout' ? Object.keys(m.inboxes) : '',
 				])
 			))
+		const payload = JSON.stringify({ messageCipher: await seal(this.env, message), orderingKey: order }),
+			available = time + (options?.delay?.total('milliseconds') ?? 0)
+		if (this.processing?.id === id) {
+			// Fedify can re-enqueue a task for Retry-After or a circuit hold even
+			// with native retries enabled. Keep its original place in the ledger
+			// and release this lease so completion cannot erase the deferred task.
+			await run(
+				this.env,
+				`UPDATE jobs SET payload=?,available_at=MIN(?,COALESCE(first_attempt_at,?)+604800000),state=CASE WHEN attempt>=100 OR first_attempt_at<=? THEN 'dead' ELSE 'pending' END,lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error=CASE WHEN attempt>=100 OR first_attempt_at<=? THEN 'Remote delivery retry limit reached' ELSE 'Remote server deferred delivery' END WHERE id=? AND state='processing' AND lease_token=?`,
+				payload,
+				available,
+				time,
+				time - 7 * 86400000,
+				time - 7 * 86400000,
+				id,
+				this.processing.token
+			)
+			return
+		}
 		await run(
 			this.env,
 			"INSERT OR IGNORE INTO jobs(id,kind,payload,available_at,created_at) VALUES(?,'federation.message',?,?,?)",
 			id,
-			JSON.stringify({ messageCipher: await seal(this.env, message), orderingKey: order }),
-			time + (options?.delay?.total('milliseconds') ?? 0),
+			payload,
+			available,
 			time
 		)
 	}
@@ -107,4 +129,9 @@ export class D1MessageQueue implements MessageQueue {
 		if (options?.signal?.aborted) return
 		await new Promise<void>((resolve) => options?.signal?.addEventListener('abort', () => resolve(), { once: true }))
 	}
+}
+
+export interface QueueJobLease {
+	id: string
+	token: string
 }

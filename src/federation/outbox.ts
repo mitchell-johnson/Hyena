@@ -1,4 +1,18 @@
 import type { Env } from '../types'
+
+export function activityOrderingKey(activity: Record<string, unknown>, fallback?: string): string {
+	const object = activity.object as Record<string, unknown> | string | undefined,
+		follow =
+			activity.type === 'Follow'
+				? activity
+				: activity.type === 'Undo' && typeof object === 'object' && object?.type === 'Follow'
+					? object
+					: null
+	if (follow && typeof follow.actor === 'string' && typeof follow.object === 'string')
+		return 'follow:' + JSON.stringify([follow.actor, follow.object])
+	return typeof object === 'string' ? object : String(object?.id ?? activity.actor ?? fallback)
+}
+
 // Domain mutations and this statement belong to one D1 batch. Federation
 // transforms and network requests only happen after the transaction commits.
 export function outboundStatement(
@@ -15,11 +29,7 @@ export function outboundStatement(
 		'outbound:' + id,
 		JSON.stringify({
 			actorId,
-			orderingKey:
-				'outbox:' +
-				(typeof activity.object === 'string'
-					? activity.object
-					: String((activity.object as Record<string, unknown> | undefined)?.id ?? activity.actor ?? actorId)),
+			orderingKey: 'outbox:' + activityOrderingKey(activity, actorId),
 			activity: {
 				'@context': 'https://www.w3.org/ns/activitystreams',
 				id: `${env.PUBLIC_ORIGIN}/activities/${id}`,
