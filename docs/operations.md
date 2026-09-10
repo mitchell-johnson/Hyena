@@ -1,8 +1,8 @@
 # Deploying and operating Hyena
 
-This runbook accompanies `0.2.0-alpha.1`, dated 10 September 2026. The repository's local integration/build/browser checks have run; the Cloudflare provisioning, production deployment, native clients, real providers and recovery drill below have **not** run. Keep the compatibility-verification flag false until the [acceptance checklist](implementation.md#external-acceptance-checklist) passes.
+This runbook accompanies `0.2.0-alpha.1`, dated 10 September 2026. The first development instance was provisioned and deployed on Cloudflare at `https://hyena.johnson.fyi`, with account domain `johnson.fyi`. All 14 migrations applied to a fresh D1 database; the private R2 bucket, two Queues, SQLite Durable Object, Images/Media bindings and cron are configured. Owner sign-in, health/readiness, public WebFinger and actor discovery have been verified. The one-time setup secret was removed after creating the owner. Native clients, a live remote peer, provider media/email/push delivery and the recovery drill remain unverified. Keep the compatibility-verification flag false until the [acceptance checklist](implementation.md#external-acceptance-checklist) passes.
 
-Use a fresh installation. Do not apply these migrations to an old Wildebeest database. Its database, actor identities and hosted media require a separately rehearsed import if an existing live instance is involved. The old Terraform and deployment button are historical source, not the new provisioning path.
+Use a fresh installation. Do not apply these migrations to an old Wildebeest database. Its database, actor identities and hosted media require a separately rehearsed import if an existing live instance is involved. The legacy Terraform, deployment button, and application code have been removed; use the provisioning steps below.
 
 ## Resources and configuration
 
@@ -37,6 +37,12 @@ Example custom-domain additions to `wrangler.jsonc`, after replacing the sample 
 ```
 
 Keep native apps and federation outside interactive browser challenges/Cloudflare Access rules. OAuth redirects, `/api/`, `/.well-known/`, ActivityPub inboxes and signed fetch must work for ordinary HTTP clients. Configure HTTPS and DNS for the actual origin, then test the origin rather than only a preview URL. Do not expose two independent active instances with the same actor identity.
+
+### Separate account and website domains
+
+`ACCOUNT_DOMAIN` is the optional hostname for public account addresses. It defaults to the host in `PUBLIC_ORIGIN`. For `@mitchell@johnson.fyi` with the app at `https://hyena.johnson.fyi`, set `ACCOUNT_DOMAIN=johnson.fyi` and `PUBLIC_ORIGIN=https://hyena.johnson.fyi`. Actor IDs, profile URLs, media and OAuth remain on the app origin. Local lookup accepts either hostname and WebFinger returns the account domain as its canonical subject.
+
+Route `johnson.fyi/.well-known/webfinger*` to the Hyena Worker as well as its `hyena.johnson.fyi` custom domain. The more specific path route leaves the existing blog's catch-all route in place. Check WebFinger through both domains after setup; both must point to the same actor. Keep the chosen domains stable after federation begins.
 
 ## Provision and deploy
 
@@ -107,7 +113,9 @@ Durable Objects persist their state and can hibernate WebSockets; the JavaScript
 
 ## Diagnose failed work
 
-`/admin` shows job states and failed jobs, media totals and usage counters. The corresponding owner APIs are `/api/hyena/admin/health`, `/api/hyena/admin/jobs` and `/api/hyena/admin/settings`. Their role and scope checks apply to native app tokens too. Inspect bounded error summaries without exporting private activity bodies or credentials into logs.
+`/admin` labels completed, waiting and running work separately from jobs needing attention. The attention list includes terminal failures and outstanding automatic retries, and explicitly says when neither exists. A successful retry leaves the attention list. The corresponding owner APIs are `/api/hyena/admin/health`, `/api/hyena/admin/jobs` and `/api/hyena/admin/settings`. Their role and scope checks apply to native app tokens too. Inspect bounded error summaries without exporting private activity bodies or credentials into logs.
+
+If an OAuth consent button appears to do nothing, inspect the browser console as well as Worker logs. Browsers can block the redirect after the server has issued a code. The consent page's `form-action` policy must include the validated callback origin or native app scheme; the other pages retain the same-origin policy. Reload consent pages opened before a policy fix. Exact registered redirect matching and CSRF checks still apply.
 
 | Symptom                                 | Check and action                                                                                                                                                                                                        |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

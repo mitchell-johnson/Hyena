@@ -1,3 +1,4 @@
+import { accountDomain } from './identity'
 import { all, one, now, accountUri, type Bind } from './data'
 import { nextId } from './db'
 import { notificationStatements } from './notifications'
@@ -75,7 +76,7 @@ export async function severanceStatements(
 			).bind(event, local.id, options.type, options.target, now(), local.id, local.id, ...binds),
 			env.DB.prepare(
 				`INSERT INTO severed_relationships SELECT ?,f.id,r.id,r.username||'@'||CASE WHEN r.domain='' THEN ? ELSE r.domain END,CASE WHEN f.follower_id=? THEN 'following' ELSE 'followers' END,f.reblogs,f.notify,f.languages FROM follows f JOIN accounts r ON (${affected}) WHERE f.state='accepted'`
-			).bind(event, new URL(env.PUBLIC_ORIGIN).host, local.id, local.id, local.id, ...binds),
+			).bind(event, accountDomain(env), local.id, local.id, local.id, ...binds),
 			...(await notificationStatements(env, local.id, local.id, 'severed_relationships', null, eventKey, {
 				sql: 'EXISTS(SELECT 1 FROM relationship_events WHERE id=?)',
 				binds: [event],

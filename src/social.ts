@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { isLocalAccountDomain } from './identity'
 import { authenticate, optionalAccount } from './auth/access'
 import { nextId } from './db'
 import { accountById, accountUri, all, one, run, parsed, now, list, object, pageLimit, cursors, links } from './data'
@@ -438,8 +439,7 @@ for (const method of ['post', 'delete'] as const)
 		try {
 			const u = new URL('https://' + stringField(input, 'domain'))
 			domain = u.hostname
-			if (u.host !== stringField(input, 'domain').toLowerCase() || domain === new URL(c.env.PUBLIC_ORIGIN).hostname)
-				throw 0
+			if (u.host !== stringField(input, 'domain').toLowerCase() || isLocalAccountDomain(c.env, domain)) throw 0
 		} catch {
 			throw new ApiError(422, 'Invalid domain')
 		}

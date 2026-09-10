@@ -1,3 +1,4 @@
+import { accountDomain } from './identity'
 import { Hono } from 'hono'
 import { requireAdmin, auditStatement } from './admin'
 import { all, one, run, parsed, list, object, now, setting, type Bind } from './data'
@@ -205,7 +206,7 @@ metrics.post('/api/v1/admin/dimensions', async (c) => {
 			key,
 			data: rows.map((d) => ({
 				key: d.key,
-				human_key: d.key || new URL(c.env.PUBLIC_ORIGIN).host,
+				human_key: d.key || accountDomain(c.env),
 				value: String(d.n),
 			})),
 		})
@@ -282,7 +283,7 @@ metrics.get('/api/hyena/admin/jobs', async (c) => {
 	return c.json(
 		await all(
 			c.env,
-			"SELECT id,kind,state,attempt,available_at,last_error,created_at FROM jobs WHERE state='dead' OR state='processing' ORDER BY created_at DESC LIMIT 100"
+			"SELECT id,kind,state,attempt,available_at,last_error,created_at FROM jobs WHERE state='dead' OR (state IN ('pending','queued','processing') AND last_error IS NOT NULL) ORDER BY CASE WHEN state='dead' THEN 0 ELSE 1 END,created_at DESC LIMIT 100"
 		)
 	)
 })

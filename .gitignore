@@ -1,5 +1,4 @@
 node_modules/
-yarn-error.log
 .wrangler/
 dist/
 .dev.vars

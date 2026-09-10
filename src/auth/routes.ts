@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { nextId } from '../db'
-import { ApiError, escapeHtml, readInput, sameOrigin, stringField, throttle } from '../http'
+import { ApiError, escapeHtml, readInput, sameOrigin, stringField, throttle, CONTENT_SECURITY_POLICY } from '../http'
 import type { AccountRow, AppEnv, AppRow } from '../types'
 import { page, hidden } from '../views'
 import { authenticate, webSession } from './access'
@@ -184,6 +184,14 @@ async function authorization(c: Parameters<typeof webSession>[0], input: Record<
 	const redirect = stringField(input, 'redirect_uri')
 	if (!(JSON.parse(app.redirect_uris) as string[]).includes(redirect))
 		throw new ApiError(400, 'Unregistered redirect URI', 'invalid_request')
+	// Callback origins become CSP sources. Reject wildcard hosts and directive
+	// delimiters, including on applications registered before this validation.
+	const callback = new URL(redirect)
+	if (
+		['https:', 'http:'].includes(callback.protocol) &&
+		!/^https?:\/\/(?:[a-z0-9._-]+|\[[a-f0-9:]+\])(?::[0-9]+)?$/i.test(callback.origin)
+	)
+		throw new ApiError(400, 'Invalid callback origin', 'invalid_request')
 	const scopes = parseScopes(stringField(input, 'scope', 'read'))
 	if (!subset(scopes, app.scopes))
 		throw new ApiError(400, 'Requested scopes exceed the application scopes', 'invalid_scope')
@@ -242,6 +250,16 @@ auth.get('/oauth/authorize', async (c) => {
 	const fields = Object.entries(input)
 		.map(([key, value]) => hidden(key, value))
 		.join('')
+	if (request.redirect !== OOB && request.mode !== 'form_post') {
+		const callback = new URL(request.redirect)
+		const source = ['http:', 'https:'].includes(callback.protocol) ? callback.origin : callback.protocol
+		// Browsers apply the submitting document's form-action policy to the
+		// redirect too. Allow only this validated callback's origin or app scheme.
+		c.header(
+			'Content-Security-Policy',
+			CONTENT_SECURITY_POLICY.replace("form-action 'self'", `form-action 'self' ${source}`)
+		)
+	}
 	return c.html(
 		page(
 			'Connect an app',

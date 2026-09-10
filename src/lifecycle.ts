@@ -1,3 +1,4 @@
+import { accountDomain } from './identity'
 import { archiveStream } from './archive'
 import { relationshipEventJSON, type RelationshipEvent } from './severance'
 import { federation } from './federation'
@@ -100,7 +101,7 @@ lifecycle.get('/api/hyena/export/:file', async (c) => {
 					a.id
 				)
 			).map((r) => [
-				r.username + '@' + (r.domain || new URL(c.env.PUBLIC_ORIGIN).host),
+				r.username + '@' + (r.domain || accountDomain(c.env)),
 				!!r.reblogs,
 				!!r.notify,
 				parsed<string[]>(r.languages, []).join(','),
@@ -117,7 +118,7 @@ lifecycle.get('/api/hyena/export/:file', async (c) => {
 					type === 'blocks' ? 'block' : 'mute'
 				)
 			).map((r) => [
-				r.username + '@' + (r.domain || new URL(c.env.PUBLIC_ORIGIN).host),
+				r.username + '@' + (r.domain || accountDomain(c.env)),
 				...(type === 'mutes' ? [parsed<{ notifications?: boolean }>(r.value, {}).notifications !== false] : []),
 			]),
 		]
@@ -142,7 +143,7 @@ lifecycle.get('/api/hyena/export/:file', async (c) => {
 					'SELECT l.title,a.username,a.domain FROM lists l JOIN list_accounts m ON m.list_id=l.id JOIN accounts a ON a.id=m.account_id WHERE l.account_id=?',
 					a.id
 				)
-			).map((r) => [r.title, r.username + '@' + (r.domain || new URL(c.env.PUBLIC_ORIGIN).host)]),
+			).map((r) => [r.title, r.username + '@' + (r.domain || accountDomain(c.env))]),
 		]
 	} else throw new ApiError(404, 'Unknown export type')
 	c.header('Content-Disposition', `attachment; filename="${type}.csv"`)
@@ -231,7 +232,7 @@ export async function processImport(env: Env, id: string) {
 				a.id
 			)
 			for (const r of old)
-				if (!addresses.has((r.username + '@' + (r.domain || new URL(env.PUBLIC_ORIGIN).host)).toLowerCase()))
+				if (!addresses.has((r.username + '@' + (r.domain || accountDomain(env))).toLowerCase()))
 					await env.DB.batch([
 						env.DB.prepare('DELETE FROM follows WHERE follower_id=? AND following_id=?').bind(a.id, r.id),
 						outboundStatement(
@@ -261,7 +262,7 @@ export async function processImport(env: Env, id: string) {
 				a.id,
 				task.kind === 'blocks' ? 'block' : 'mute'
 			))
-				if (!addresses.has((r.username + '@' + (r.domain || new URL(env.PUBLIC_ORIGIN).host)).toLowerCase()))
+				if (!addresses.has((r.username + '@' + (r.domain || accountDomain(env))).toLowerCase()))
 					await run(
 						env,
 						'DELETE FROM account_actions WHERE account_id=? AND target_id=? AND kind=?',

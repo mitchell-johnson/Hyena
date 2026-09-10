@@ -1,5 +1,6 @@
 import { currentRecipients, filterQueued } from './delivery-policy'
 import { domainPolicy } from '../moderation-policy'
+import { accountDomain, isLocalAccountDomain } from '../identity'
 import { createFederationBuilder, type Context, type Message } from '@fedify/fedify'
 import { federation as honoFederation } from '@fedify/hono'
 import {
@@ -236,7 +237,7 @@ builder.setInboxListeners('/users/{identifier}/inbox', '/inbox').on(Activity, re
 
 export async function federation(env: Env) {
 	return builder.build({
-		origin: env.PUBLIC_ORIGIN,
+		origin: { webOrigin: env.PUBLIC_ORIGIN, handleHost: accountDomain(env) },
 		kv: new D1KvStore(env),
 		queue: new D1MessageQueue(env),
 		manuallyStartQueue: true,
@@ -244,6 +245,14 @@ export async function federation(env: Env) {
 	})
 }
 export async function federationMiddleware(c: HonoContext<AppEnv>, next: () => Promise<void>) {
+	const url = new URL(c.req.url)
+	if (
+		c.req.path === '/.well-known/webfinger' &&
+		url.origin !== c.env.PUBLIC_ORIGIN &&
+		url.host === accountDomain(c.env)
+	) {
+		return c.redirect(`${c.env.PUBLIC_ORIGIN}${url.pathname}${url.search}`, 307)
+	}
 	return honoFederation(await federation(c.env), () => c.env)(c, next)
 }
 export async function federationMessage(env: Env, payload: { message: Message }) {
@@ -251,10 +260,9 @@ export async function federationMessage(env: Env, payload: { message: Message })
 	if (current) await (await federation(env)).processQueuedTask(env, current)
 }
 export async function resolveAccount(env: Env, handle: string, context?: Context<Env>): Promise<AccountRow> {
-	const parts = handle.replace(/^@/, '').split('@'),
-		host = new URL(env.PUBLIC_ORIGIN).host
+	const parts = handle.replace(/^@/, '').split('@')
 	if (!/^https?:/.test(handle)) {
-		const domain = parts[1] && parts[1] !== host ? parts[1] : ''
+		const domain = isLocalAccountDomain(env, parts[1]) ? '' : parts[1]!
 		const found = await one<AccountRow>(
 			env,
 			'SELECT * FROM accounts WHERE username=? AND domain=?',

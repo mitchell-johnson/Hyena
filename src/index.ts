@@ -6,7 +6,7 @@ import { auth } from './auth/routes'
 import { security } from './auth/security'
 import { authenticate, lookupToken, optionalAccount, webSession } from './auth/access'
 import { permits } from './auth/scopes'
-import { ApiError, escapeHtml } from './http'
+import { ApiError, escapeHtml, CONTENT_SECURITY_POLICY } from './http'
 import { consume, sweep } from './jobs'
 import { media } from './media/routes'
 import { maxMediaBytes, MEDIA_TYPES } from './media/process'
@@ -44,10 +44,7 @@ app.use('*', async (c, next) => {
 	// validation. Cross-origin navigation still receives no referrer.
 	c.header('Referrer-Policy', 'same-origin')
 	c.header('Cache-Control', 'no-store')
-	c.header(
-		'Content-Security-Policy',
-		"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: blob:; media-src 'self' https: blob:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-	)
+	c.header('Content-Security-Policy', CONTENT_SECURITY_POLICY)
 	await next()
 })
 const apiCors = cors({

@@ -1,97 +1,49 @@
-# Contribute to Wildebeest
+# Contributing to Hyena
 
-## Getting started
+Bug reports should include the Hyena version, browser or Mastodon app and version, steps to reproduce, and the result you expected. Remove passwords, tokens, and private post contents from diagnostics. Use the [security reporting instructions](SECURITY.md) for vulnerabilities.
 
-Install:
+## Run locally
 
-```sh
-yarn
-```
-
-## Running tests
-
-Run the API (backend) unit tests:
+Install Node.js 24 or newer and the pinned dependencies:
 
 ```sh
-yarn test
+npm ci
+cp .dev.vars.example .dev.vars
 ```
 
-Run the UI (frontend) integration tests:
+Replace the two example secrets with separate random values. Keep `.dev.vars` private. Then initialize the local database and start Hyena:
 
 ```sh
-yarn database:create-mock # this initializes a local test database
-yarn test:ui
+npm run db:migrate
+npm run dev:local
 ```
 
-## Debugging locally
+Open `http://localhost:8787/setup`, enter your local setup token, and create the owner account. Sign in to use the web interface and Administration.
+
+`dev:local` uses local D1, R2, Queues, and Durable Objects. It omits account-dependent Images and Media transformations. To exercise those services with your Cloudflare account, configure your own resources as described in the [operations guide](docs/operations.md), then use `npm run dev`.
+
+## Check changes
 
 ```sh
-yarn database:create-mock # this initializes a local test database
-yarn dev
+npm run check
 ```
 
-If only working on the REST API endpoints this is sufficient.
-Any changes to the `functions` directory and the files it imports will re-run the Pages build.
+This runs TypeScript checks, integration tests in workerd with local Cloudflare bindings, a SQLite backup round-trip test, and a Wrangler deployment dry run. It does not deploy. Remote provider and transport calls are substituted in the integration tests; verify relevant real services separately when changing those integrations.
 
-Changes to the UI code will not trigger a rebuild automatically.
-To do so, run the following in second terminal:
+Use `npm run test:watch` while working on runtime behavior. Format changed files with Prettier. For web changes, follow the [local browser check](docs/operations.md#local-browser-check) and check both desktop and mobile layouts.
 
-```sh
-yarn --cwd frontend watch
-```
+## Project layout
 
-## Deploying
+| Path             | Purpose                                                                  |
+| ---------------- | ------------------------------------------------------------------------ |
+| `src/`           | Worker, Mastodon APIs, federation, account security, and background jobs |
+| `public/`        | Web client and static assets                                             |
+| `schema/`        | Ordered D1 migrations                                                    |
+| `tests/`         | Runtime integration tests and synthetic media fixtures                   |
+| `scripts/`       | Local development, provisioning, backup, and verification tools          |
+| `docs/`          | Operations, compatibility evidence, architecture, and dependency notices |
+| `wrangler.jsonc` | Cloudflare deployment configuration                                      |
 
-This is a Cloudflare Pages project and can be deployed directly from the command line using Wrangler.
+Keep migrations additive once released, and preserve existing account identities and encryption keys. Include a focused regression test for behavior changes. Pull requests should explain the user-visible problem, the resulting behavior, and the checks performed.
 
-First you must create and configure the Pages project and bindings (D1 database, KV namespace, etc).
-
-### Initialization
-
-Run the following command to create the Pages project and the D1 database in your account.
-
-```
-yarn deploy:init
-```
-
-You should see output like:
-
-```
-✅ Successfully created DB 'wildebeest'!
-
-Add the following to your wrangler.toml to connect to it from a Worker:
-
-[[ d1_databases ]]
-binding = "DB" # i.e. available in your Worker on env.DB
-database_name = "wildebeest"
-database_id = "ddce04a1-fd51-40cb-be21-e899d70fb9f3"
-```
-
-Grab the database_id from the command line output and add it to the wrangler.toml file. Don't change the binding name in the wrangler.toml. It should stay as `DATABASE`.
-
-Next go to the Pages dashboard and add the D1 database to the newly created Pages project. This can be found at
-
-```
-wildebeest->Settings->Functions->D1 database bindings->Add binding
-```
-
-Enter `DATABASE` for the variable name and select the `wildebeest` database from the dropdown.
-
-### Environment variables
-
-wildebeest expectes the Pages project to inject the following environment variables.
-
-Secret used to encrypt user private key in the database:
-- `USER_KEY`
-
-API token for integration with Cloudflare services (Cloudflare Images for example):
-- `CF_ACCOUNT_ID`
-- `CF_API_TOKEN`
-
-### Deployment
-
-Run the following command to deploy the current working directory to Cloudflare Pages:
-
-```
-yarn deploy
-```
+The CI workflow checks pushes and pull requests. Deployment is a separate, manual workflow; merging to `main` does not deploy an instance. See the [deployment and recovery guide](docs/operations.md) before operating on live data.

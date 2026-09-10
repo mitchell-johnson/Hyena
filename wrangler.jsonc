@@ -1,12 +1,20 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "hyena",
+	"account_id": "125d5501f65fb8940fc3c6ce9ebec809",
 	"main": "src/index.ts",
 	"assets": { "directory": "public", "binding": "ASSETS" },
 	"compatibility_date": "2026-09-10",
 	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"preview_urls": false,
+	"routes": [
+		{ "pattern": "hyena.johnson.fyi", "custom_domain": true },
+		{ "pattern": "johnson.fyi/.well-known/webfinger*", "zone_name": "johnson.fyi" },
+	],
 	"vars": {
-		"PUBLIC_ORIGIN": "http://localhost:8787",
+		"PUBLIC_ORIGIN": "https://hyena.johnson.fyi",
+		"ACCOUNT_DOMAIN": "johnson.fyi",
 		"INSTANCE_TITLE": "Hyena",
 		"INSTANCE_DESCRIPTION": "A personal home on the fediverse.",
 		"MAX_MEDIA_BYTES": "40000000",
@@ -15,7 +23,7 @@
 		{
 			"binding": "DB",
 			"database_name": "hyena",
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "f67405fc-934b-42af-8d57-9bd84b639ebc",
 			"migrations_dir": "schema",
 		},
 	],

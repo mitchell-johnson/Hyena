@@ -1,12 +1,7 @@
-# Runtime dependencies
+# Third-party notices
 
-Hyena retains the original Wildebeest Apache-2.0 license and notices. New runtime dependencies are unmodified packages resolved by `package-lock.json`:
+Hyena began as a fork of [Cloudflare Wildebeest](https://github.com/cloudflare/wildebeest). Its original copyright and Apache-2.0 attribution are preserved in [LICENSE](LICENSE) and repository history. The legacy application has been removed from the current source tree.
 
-| Package | License | Source |
-| --- | --- | --- |
-| Hono | MIT | https://github.com/honojs/hono |
-| @fastify/busboy | MIT | https://github.com/fastify/busboy |
-| @noble/hashes | MIT | https://github.com/paulmillr/noble-hashes |
-| Mediabunny | MPL-2.0 | https://github.com/Vanilagy/mediabunny |
+Current runtime dependencies are pinned in `package-lock.json`. The [runtime dependency notices](docs/third-party-notices.md) list their versions, licenses, and source packages. Regenerate that inventory with `node scripts/dependency-notices.mjs` after changing dependencies.
 
-Full package license files are included in their npm distributions. Mediabunny is used for bounded metadata parsing; no custom changes are made to its source. Development dependencies retain their respective package licenses. Synthetic media fixtures were generated for this project as described in `tests/fixtures/README.md`.
+Package license files are included in their npm distributions. Runtime packages are used without source modifications; dependency licenses remain applicable. Synthetic media fixtures are documented in [tests/fixtures/README.md](tests/fixtures/README.md).

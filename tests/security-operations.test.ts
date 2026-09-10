@@ -13,6 +13,45 @@ import { currentRecipients } from '../src/federation/delivery-policy'
 beforeEach(async () => applyD1Migrations(env.DB, runtime.TEST_MIGRATIONS))
 afterEach(async () => reset())
 describe('security and durable operations', () => {
+	it('shows failed jobs and outstanding retries without treating healthy work as failures', async () => {
+		const owner = await seed('owner', 'admin'),
+			user = await seed('user')
+		const states = ['dead', 'pending', 'queued', 'processing', 'done']
+		for (const state of states) {
+			for (const failed of [false, true]) {
+				await env.DB.prepare(
+					'INSERT INTO jobs(id,kind,payload,state,attempt,available_at,created_at,last_error) VALUES(?,?,?,?,?,?,?,?)'
+				)
+					.bind(
+						`${state}-${failed}`,
+						'status.event',
+						'{}',
+						state,
+						failed ? 1 : 0,
+						Date.now(),
+						Date.now(),
+						failed ? 'Temporary provider error' : null
+					)
+					.run()
+			}
+		}
+		expect((await request('/api/hyena/admin/jobs', { token: user.token })).status).toBe(403)
+		const jobs = await json<{ id: string; state: string }[]>('/api/hyena/admin/jobs', { token: owner.token })
+		expect(jobs.map((job) => job.id).sort()).toEqual([
+			'dead-false',
+			'dead-true',
+			'pending-true',
+			'processing-true',
+			'queued-true',
+		])
+		expect(jobs.slice(0, 2).every((job) => job.state === 'dead')).toBe(true)
+		await json('/api/hyena/admin/jobs/dead-true/retry', { token: owner.token, method: 'POST' })
+		expect(
+			(await json<{ id: string }[]>('/api/hyena/admin/jobs', { token: owner.token })).some(
+				(job) => job.id === 'dead-true'
+			)
+		).toBe(false)
+	})
 	it('matches RFC 6238, rejects TOTP reuse and consumes recovery codes once', async () => {
 		const secret = base32(new TextEncoder().encode('12345678901234567890'))
 		expect(await totp(secret, Math.floor(59 / 30))).toBe('287082')

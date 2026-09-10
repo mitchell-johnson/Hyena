@@ -1,68 +1,51 @@
 # Hyena
 
-A small federated social server for **Cloudflare Workers, D1 and R2**, with Queues for background delivery and hibernating Durable Objects for streams. Forked from [Wildebeest](https://github.com/cloudflare/wildebeest). No containers, Redis, PostgreSQL, VM, or always-running process.
+Your own home on the fediverse. Hyena lets you post, follow people on other servers, and keep a social address on a domain you control. Use the built-in website or connect a Mastodon app.
 
-**0.2.0-alpha.1 — implementation available, production compatibility unverified.** The Worker implements the Mastodon 4.7.1 REST route inventory, ActivityPub federation, OAuth app connections, posting and interactions, short media, collections and quotes, streaming/push, account security, administration, and a first-party web client. Route coverage does not establish complete behavioral equivalence or certify a native app. No Cloudflare deployment has been performed.
+Hyena is designed for a personal server or a small community, hosted on Cloudflare. **It is currently alpha software (`0.2.0-alpha.1`).** App compatibility and live federation are still being tested; see the [compatibility notes](docs/implementation.md) for what has been verified.
 
-- [Full architecture and build plan](docs/build-plan.md)
-- [Feature inventory, evidence and compatibility limits](docs/implementation.md)
-- [Deployment, recovery and operation](docs/operations.md)
-- [Pinned Mastodon REST routes](docs/mastodon-routes.json)
+## What you can do
 
-## Develop
+- **Share and join conversations.** Write and edit posts, reply, boost, favourite, bookmark, and create polls or scheduled posts.
+- **Find your people.** Follow accounts across the fediverse, browse timelines and hashtags, and organize your reading with lists and collections.
+- **Choose your audience.** Publish publicly, to followers, or to people you mention. Use content warnings, filters, mutes, and blocks.
+- **Share photos and short clips.** Add media descriptions for accessibility. Audio, video, and animated images must be shorter than 60 seconds; uploads are limited to 40 MB, or 20 MB for images.
+- **Manage your account.** Edit your profile, connect or revoke apps, use two-factor authentication or passkeys, and import or export account data.
 
-Node.js 24 or newer:
+The web interface works on desktop and mobile. Administrators can manage invitations, accounts, reports, server rules, and background jobs from **Administration**.
 
-```sh
-npm ci
-cp .dev.vars.example .dev.vars
-npm run db:migrate
-npm run dev:local
-```
+## Start using Hyena
 
-Replace both example secrets with different random values. Open `http://localhost:8787/setup`, create the owner, then sign in. `dev:local` uses local D1/R2/Queues/DOs and omits the account-dependent Images/Media bindings. Use `npm run dev` with a connected Cloudflare account to exercise those providers. Integration tests substitute only remote providers and transport sends.
+Open your server's website and choose **Sign in**. Registration is closed by default; if you do not have an account, ask the server owner for an invitation. If you are setting up your own server, follow the hosting guide below to create its first account.
 
-```sh
-npm run check
-npm audit --omit=dev
-```
+After signing in, update your profile in **Settings**, search for someone using their full address (such as `@someone@their-server.example`), and follow them. Their new posts will appear in **Home**.
 
-The checks run TypeScript, workerd integration tests, a lossless SQLite snapshot test, and a Wrangler deployment dry-run. They do not deploy anything. Browser smoke instructions are in [operations](docs/operations.md#local-browser-check).
+### Connect a Mastodon app
 
-## Deploy a development instance
+1. In the app, choose to sign in to an existing account.
+2. Enter your Hyena server's website hostname, such as `social.example.com`.
+3. Sign in on the Hyena page, review the requested permissions, and select **Authorize app** to return to the app.
 
-Use **fresh resources**. Historical Wildebeest databases and Terraform are incompatible with this runtime.
+Your account address and server hostname can differ. For example, `@you@example.com` might use `social.example.com` for app sign-in. The **Connect a Mastodon app** page on your server shows the hostname to enter and lets you revoke access later.
 
-1. Set the canonical HTTPS `PUBLIC_ORIGIN`, resource names and custom domain in `wrangler.jsonc`. Treat the domain and actor identities as permanent.
-2. Review `npm run provision`. With account credentials configured, `npm run provision -- --execute` creates missing D1/R2/Queue resources and records the D1 ID. It does not deploy the Worker.
-3. Set a stable `KEY_ENCRYPTION_SECRET` before creating actor keys, sessions, VAPID keys or accounts. Back it up separately. Set `SETUP_TOKEN` for one-time owner setup.
-4. Enable Images and Media bindings in the Cloudflare account. Configure optional Email Service if registration or password-reset email is wanted.
-5. Follow the [deployment runbook](docs/operations.md), run the checks, apply migrations, then deploy. The GitHub deployment workflow is manual.
+If authorization stalls, close the sign-in screen and start again to load the latest page. Include the app name, device, and error when [reporting a problem](https://github.com/mitchell-johnson/Hyena/issues). Individual apps may expose features that Hyena has not yet fully verified.
 
-After owner setup, remove **only** `SETUP_TOKEN`. Removing or replacing `KEY_ENCRYPTION_SECRET` makes encrypted identity keys and credentials unreadable. Registration is closed by default; invited/open/approval-based local accounts are supported.
+## Host your own server
 
-## Media and costs
+You will need a Cloudflare account with Workers Paid, a domain you control, and Node.js 24 or newer to run the setup tools. Hyena stores account data in D1 and media in R2, with Cloudflare services handling background work and live updates.
 
-Audio, video, and animated images must be **strictly shorter than 60 seconds**. Exact 60-second files are rejected. The input is probed before a paid transformation; it is not silently clipped.
+The [hosting guide](docs/operations.md#provision-and-deploy) walks through configuring your domain, creating resources, setting secrets, deploying, and creating the owner account. Start with a fresh database and choose a domain you intend to keep. The repository's `wrangler.jsonc` describes the maintainer's deployment: replace its account, domains, and resource settings before provisioning your own.
 
-Supported input is explicitly advertised: JPEG, PNG/APNG, WebP, GIF, HEIC/HEIF, H.264/AAC MP4 and MP3, subject to the actual configured limits. Uploads are capped at 40 MB; image input is additionally capped at 20 MB. Static images are limited to 40 MP, animations to 50 MP across frames, and video to a 1080p pixel matrix / average 60 FPS. Other codecs and containers are rejected. MP3 is remuxed without tags. Images and video use native bindings; successful processing deletes originals and stores reusable derivatives in R2. No FFmpeg service or Stream subscription is provisioned.
+Registration stays closed until you choose otherwise. Invitations are available in Administration; open registration and password-reset email require an email service. Hosting costs depend on your Cloudflare plan, media processing, and usage; the guide covers budgets and backups.
 
-Media URLs are unguessable capabilities. Possessing a URL permits byte access; OAuth controls private-post discovery, not a copied media URL. The R2 bucket must remain private.
+Posts restricted to followers or mentioned people are not end-to-end encrypted. Anyone who has a media URL can access that file. Read the [privacy and compatibility limits](docs/implementation.md#explicit-release-limits) before sharing sensitive information.
 
-The cost target is the **US$5/month Workers Paid baseline**, plus the domain, optional services and usage beyond included allowances. It is not a measured bill. The Media binding is currently a beta with no binding billing; this is not a promise of permanent free conversion. See the [dated cost assessment](docs/build-plan.md#15-cost-model-and-cost-controls). Application budgets bound uploads and transformations; they are not an account-wide billing cap.
+## Help and contribute
 
-Queues remains useful: a Durable Object has durable state but can hibernate or be evicted. It is not an immortal running worker. D1 stores committed job intent; Queues delivers references; a periodic sweep repairs lost sends and retries. See the [delivery design](docs/implementation.md#delivery-and-consistency).
+- [Hosting, updates, backups, and troubleshooting](docs/operations.md)
+- [Features and known compatibility limits](docs/implementation.md)
+- [Local development and contributing](CONTRIBUTING.md)
+- [Report a bug or request a feature](https://github.com/mitchell-johnson/Hyena/issues)
+- [Report a security issue](SECURITY.md)
 
-## Source layout
-
-| Path                                                                            | Purpose                                                      |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `src/`, `public/`                                                               | Worker and first-party client                                |
-| `schema/`                                                                       | New, ordered D1 migrations                                   |
-| `tests/`, `scripts/test-backup.mjs`                                             | Runtime and snapshot tests                                   |
-| `scripts/`                                                                      | Provisioning, browser checks, backup, restore and notices    |
-| `wrangler.jsonc`                                                                | Cloudflare bindings and runtime configuration                |
-| `docs/`                                                                         | Plan, compatibility record, operation and dependency notices |
-| `backend/`, `functions/`, `frontend/`, `consumer/`, `do/`, `migrations/`, `tf/` | Historical Wildebeest source; excluded from the new build    |
-
-Apache-2.0 and upstream notices are retained. See [runtime dependency notices](docs/third-party-notices.md) and the [historical README](docs/wildebeest-readme.md). Historical Wildebeest client claims do not certify Hyena.
+Hyena is licensed under [Apache-2.0](LICENSE). It began as a fork of [Wildebeest](https://github.com/cloudflare/wildebeest); the original attribution is preserved. See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licenses.
