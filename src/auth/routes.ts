@@ -7,6 +7,8 @@ import { page, hidden } from '../views'
 import { authenticate, webSession } from './access'
 import { digest, equal, passwordHash, randomToken, verifyPassword } from './crypto'
 import { parseScopes, SCOPES, subset } from './scopes'
+import { verifySecondFactor, createSession, revokeSession } from './security'
+import { vapid } from '../push'
 
 export const auth = new Hono<AppEnv>()
 const OOB = 'urn:ietf:wg:oauth:2.0:oob'
@@ -67,8 +69,8 @@ auth.post('/setup', async (c) => {
 	const id = await nextId(c.env.DB)
 	// A singleton constraint closes the race between two simultaneous setups.
 	const result = await c.env.DB.prepare(
-		`INSERT INTO accounts(id, username, password_hash, created_at)
-    SELECT ?, ?, ?, ? WHERE NOT EXISTS(SELECT 1 FROM accounts)`
+		`INSERT INTO accounts(id, username, password_hash, created_at, owner_slot, role)
+    SELECT ?, ?, ?, ?, 1, 'admin' WHERE NOT EXISTS(SELECT 1 FROM accounts WHERE domain='')`
 	)
 		.bind(id, username, passwordHash(password), new Date().toISOString())
 		.run()
@@ -83,7 +85,7 @@ auth.get('/login', async (c) => {
 	return c.html(
 		page(
 			'Sign in',
-			`<h1>Welcome home</h1><form method="post">${hidden('csrf', csrf)}${hidden('return_to', localReturn(c.req.query('return_to') ?? '/'))}<label for="username">Username</label><input id="username" name="username" required autocomplete="username"><label for="password">Password</label><input id="password" name="password" type="password" maxlength="256" required autocomplete="current-password"><button>Sign in</button></form>`
+			`<h1>Welcome home</h1><form method="post">${hidden('csrf', csrf)}${hidden('return_to', localReturn(c.req.query('return_to') ?? '/'))}<label for="username">Username</label><input id="username" name="username" required autocomplete="username"><label for="password">Password</label><input id="password" name="password" type="password" maxlength="256" required autocomplete="current-password"><label for="otp">Authenticator or recovery code (if enabled)</label><input id="otp" name="otp" autocomplete="one-time-code"><button>Sign in</button></form><p><a href="/auth/password/new">Reset password</a></p><button id="passkey-login">Sign in with a passkey</button><script src="/assets/login.js" defer></script>`
 		)
 	)
 })
@@ -97,14 +99,16 @@ auth.post('/login', async (c) => {
 	const password = stringField(input, 'password')
 	if (username.length > 30 || password.length > 256) throw new ApiError(401, 'Invalid username or password')
 	await throttle(c, `login:${username}`)
-	const account = await c.env.DB.prepare('SELECT * FROM accounts WHERE username = ?').bind(username).first<AccountRow>()
+	const account = await c.env.DB.prepare(
+		`SELECT * FROM accounts WHERE username = ? AND domain='' AND disabled=0 AND suspended=0 AND approved=1 AND (email IS NULL OR email_confirmed=1)`
+	)
+		.bind(username)
+		.first<AccountRow>()
 	if (!account || !verifyPassword(password, account.password_hash))
 		throw new ApiError(401, 'Invalid username or password')
-	const token = randomToken()
-	await c.env.DB.prepare('INSERT INTO sessions(token_hash, account_id, csrf, expires_at) VALUES (?, ?, ?, ?)')
-		.bind(await digest(token), account.id, randomToken(), Date.now() + 8 * 3600_000)
-		.run()
-	setCookie(c, 'hyena_session', token, { ...cookieOptions(c.env.PUBLIC_ORIGIN), maxAge: 8 * 3600 })
+	if (!(await verifySecondFactor(c.env, account.id, stringField(input, 'otp'))))
+		throw new ApiError(401, 'A valid authenticator or recovery code is required')
+	await createSession(c, account)
 	deleteCookie(c, 'hyena_form', cookieOptions(c.env.PUBLIC_ORIGIN))
 	return c.redirect(localReturn(stringField(input, 'return_to')), 303)
 })
@@ -114,9 +118,7 @@ auth.post('/logout', async (c) => {
 	const session = await webSession(c)
 	const input = await readInput(c.req.raw)
 	if (!session || !equal(session.csrf, stringField(input, 'csrf'))) throw new ApiError(403, 'Invalid form token')
-	await c.env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?')
-		.bind(await digest(getCookie(c, 'hyena_session')!))
-		.run()
+	await revokeSession(c.env, await digest(getCookie(c, 'hyena_session')!), session.account_id)
 	deleteCookie(c, 'hyena_session', cookieOptions(c.env.PUBLIC_ORIGIN))
 	return c.redirect('/', 303)
 })
@@ -163,6 +165,7 @@ auth.post('/api/v1/apps', async (c) => {
 		client_id: clientId,
 		client_secret: secret,
 		client_secret_expires_at: 0,
+		vapid_key: (await vapid(c.env)).public,
 		scopes: scopes.split(' '),
 		redirect_uris: redirects,
 		redirect_uri: redirects.join('\n'),
@@ -172,8 +175,8 @@ auth.post('/api/v1/apps', async (c) => {
 async function authorization(c: Parameters<typeof webSession>[0], input: Record<string, unknown>) {
 	if (stringField(input, 'response_type') !== 'code')
 		throw new ApiError(400, 'Only the code response type is supported', 'unsupported_response_type')
-	if (stringField(input, 'response_mode', 'query') !== 'query')
-		throw new ApiError(400, 'Only query response mode is supported', 'invalid_request')
+	if (!['query', 'fragment', 'form_post'].includes(stringField(input, 'response_mode', 'query')))
+		throw new ApiError(400, 'Unsupported response mode', 'invalid_request')
 	const app = await c.env.DB.prepare('SELECT * FROM oauth_apps WHERE client_id = ?')
 		.bind(stringField(input, 'client_id'))
 		.first<AppRow>()
@@ -188,7 +191,42 @@ async function authorization(c: Parameters<typeof webSession>[0], input: Record<
 	const method = stringField(input, 'code_challenge_method')
 	if ((challenge && (method !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(challenge))) || (!challenge && method))
 		throw new ApiError(400, 'PKCE requires an S256 challenge', 'invalid_request')
-	return { app, redirect, scopes: scopes.join(' '), challenge, state: stringField(input, 'state') }
+	return {
+		app,
+		redirect,
+		scopes: scopes.join(' '),
+		challenge,
+		state: stringField(input, 'state'),
+		mode: stringField(input, 'response_mode', 'query'),
+	}
+}
+
+function authorizationResponse(
+	c: Parameters<typeof webSession>[0],
+	request: { redirect: string; state: string; mode: string },
+	values: Record<string, string>
+) {
+	const params = new URLSearchParams(values)
+	if (request.state) params.set('state', request.state)
+	if (request.mode === 'form_post') {
+		const action = new URL(request.redirect)
+		if (!['https:', 'http:'].includes(action.protocol)) throw new ApiError(400, 'form_post requires an HTTP callback')
+		const nonce = randomToken()
+		c.header(
+			'Content-Security-Policy',
+			`default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; form-action ${action.origin}; frame-ancestors 'none'; base-uri 'none'`
+		)
+		return c.html(
+			page(
+				'Return to your app',
+				`<form id="callback" action="${escapeHtml(request.redirect)}" method="post">${[...params].map(([k, v]) => hidden(k, v)).join('')}<button>Continue to your app</button></form><script nonce="${nonce}">document.getElementById('callback').submit()</script>`
+			)
+		)
+	}
+	const target = new URL(request.redirect)
+	if (request.mode === 'fragment') target.hash = params.toString()
+	else for (const [k, v] of params) target.searchParams.set(k, v)
+	return c.redirect(target.href, 303)
 }
 
 auth.get('/oauth/authorize', async (c) => {
@@ -220,10 +258,7 @@ auth.post('/oauth/authorize', async (c) => {
 	const request = await authorization(c, input)
 	if (stringField(input, 'decision') !== 'allow') {
 		if (request.redirect === OOB) return c.html(page('Authorization cancelled', '<h1>Authorization cancelled</h1>'))
-		const target = new URL(request.redirect)
-		target.searchParams.set('error', 'access_denied')
-		if (request.state) target.searchParams.set('state', request.state)
-		return c.redirect(target.toString(), 303)
+		return authorizationResponse(c, request, { error: 'access_denied' })
 	}
 	const code = randomToken()
 	await c.env.DB.prepare(
@@ -246,10 +281,7 @@ auth.post('/oauth/authorize', async (c) => {
 				`<h1>Your authorization code</h1><p>Copy this code into your app.</p><pre>${escapeHtml(code)}</pre>`
 			)
 		)
-	const target = new URL(request.redirect)
-	target.searchParams.set('code', code)
-	if (request.state) target.searchParams.set('state', request.state)
-	return c.redirect(target.toString(), 303)
+	return authorizationResponse(c, request, { code })
 })
 
 async function clientAuthentication(
@@ -341,6 +373,7 @@ auth.post('/oauth/revoke', async (c) => {
 	)
 		.bind(Date.now(), hash, app.id)
 		.run()
+	await c.env.DB.prepare('DELETE FROM push_subscriptions WHERE token_hash=?').bind(hash).run()
 	if (token.account_id) await c.env.STREAMS.get(c.env.STREAMS.idFromName(token.account_id)).revoke(hash)
 	return c.json({})
 })
@@ -369,7 +402,7 @@ auth.get('/.well-known/oauth-authorization-server', (c) => {
 		userinfo_endpoint: origin + '/oauth/userinfo',
 		scopes_supported: SCOPES,
 		response_types_supported: ['code'],
-		response_modes_supported: ['query'],
+		response_modes_supported: ['query', 'fragment', 'form_post'],
 		grant_types_supported: ['authorization_code', 'client_credentials'],
 		code_challenge_methods_supported: ['S256'],
 		token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],

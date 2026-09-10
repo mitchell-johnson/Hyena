@@ -22,6 +22,7 @@ export interface MediaService {
 	}
 }
 export interface Env {
+	ASSETS?: Fetcher
 	DB: D1Database
 	MEDIA_BUCKET: R2Bucket
 	JOBS: Queue<JobMessage>
@@ -33,15 +34,55 @@ export interface Env {
 	INSTANCE_TITLE: string
 	INSTANCE_DESCRIPTION: string
 	MAX_MEDIA_BYTES?: string
+	MAINTENANCE_MODE?: string
 	SETUP_TOKEN?: string
+	KEY_ENCRYPTION_SECRET?: string
+	VAPID_PUBLIC_KEY?: string
+	VAPID_PRIVATE_KEY?: string
+	VAPID_SUBJECT?: string
+	REGISTRATIONS?: string
+	CONTACT_EMAIL?: string
+	TRANSLATION?: Fetcher
+	EMAIL?: SendEmail
 }
 export interface AccountRow {
+	last_seen_at?: string | null
+	created_by_application_id?: string | null
+	moved_at?: string | null
 	id: string
 	username: string
 	display_name: string
 	note: string
 	password_hash: string
 	created_at: string
+	domain?: string
+	uri?: string | null
+	url?: string | null
+	inbox?: string | null
+	shared_inbox?: string | null
+	outbox?: string | null
+	followers_url?: string | null
+	following_url?: string | null
+	locked?: number
+	bot?: number
+	discoverable?: number
+	indexable?: number
+	avatar?: string | null
+	header?: string | null
+	fields?: string
+	preferences?: string
+	public_keys?: string
+	private_keys?: string | null
+	aliases?: string
+	moved_to_id?: string | null
+	role?: 'user' | 'moderator' | 'admin'
+	email?: string | null
+	email_confirmed?: number
+	approved?: number
+	disabled?: number
+	suspended?: number
+	silenced?: number
+	sensitive?: number
 }
 export interface AppRow {
 	id: string
@@ -78,8 +119,20 @@ export interface StatusRow {
 	mutation_id: string
 	request_key: string | null
 	request_hash: string | null
+	uri?: string | null
+	url?: string | null
+	local?: number
+	reblog_of_id?: string | null
+	quote_id?: string | null
+	quote_state?: string | null
+	quote_policy?: string
+	quote_authorization?: string | null
+	application_id?: string | null
+	conversation_id?: string | null
+	card?: string | null
 }
 export interface MediaRow {
+	custom_preview_key?: string | null
 	id: string
 	account_id: string
 	status_id: string | null
@@ -97,10 +150,28 @@ export interface MediaRow {
 	error: string | null
 	created_at: number
 	updated_at: number
+	remote_url?: string | null
+	preview_remote_url?: string | null
+	scheduled_id?: string | null
 }
 export interface JobRow {
+	created_at: number
+	first_attempt_at: number | null
 	id: string
-	kind: 'status.event' | 'media.process'
+	kind:
+		| 'status.event'
+		| 'media.process'
+		| 'poll.close'
+		| 'federation.message'
+		| 'federation.extension'
+		| 'federation.send'
+		| 'notification.push'
+		| 'schedule.publish'
+		| 'account.event'
+		| 'account.import'
+		| 'account.export'
+		| 'email.send'
+		| 'card.fetch'
 	payload: string
 	state: string
 	attempt: number

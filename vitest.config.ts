@@ -1,6 +1,7 @@
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin'
 import { defineConfig } from 'vitest/config'
 import { readFileSync } from 'node:fs'
+import { builtinModules } from 'node:module'
 
 export default defineConfig({
 	// Workers nodejs_compat supplies Node modules. Avoid browser:false stubs,
@@ -34,5 +35,19 @@ export default defineConfig({
 			},
 		}),
 	],
-	test: { include: ['tests/**/*.test.ts'], testTimeout: 30_000, hookTimeout: 30_000, fileParallelism: false },
+	test: {
+		deps: {
+			optimizer: {
+				ssr: {
+					enabled: true,
+					include: ['@fedify/fedify', '@fedify/vocab', '@fedify/hono', 'sanitize-html', '@simplewebauthn/server'],
+					rolldownOptions: { external: [...builtinModules, /^node:/, /^cloudflare:/] },
+				},
+			},
+		},
+		include: ['tests/**/*.test.ts'],
+		testTimeout: 30_000,
+		hookTimeout: 30_000,
+		fileParallelism: false,
+	},
 })

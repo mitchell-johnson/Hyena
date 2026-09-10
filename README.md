@@ -1,76 +1,68 @@
 # Hyena
 
-A personal Mastodon-compatible server being built on Cloudflare Workers, D1, R2, Queues, and hibernating Durable Objects. Forked from [Wildebeest](https://github.com/cloudflare/wildebeest). No containers or always-on server.
+A small federated social server for **Cloudflare Workers, D1 and R2**, with Queues for background delivery and hibernating Durable Objects for streams. Forked from [Wildebeest](https://github.com/cloudflare/wildebeest). No containers, Redis, PostgreSQL, VM, or always-running process.
 
-**Status: first implementation milestone, for development.** Owner login, OAuth app authorization, local posting, durable jobs, short-media processing, and basic WebSocket streams are implemented. Federation, the complete Mastodon API, and real app certification are still being built. Connecting an app may succeed while features it subsequently requests are unavailable.
+**0.2.0-alpha.1 — implementation available, production compatibility unverified.** The Worker implements the Mastodon 4.7.1 REST route inventory, ActivityPub federation, OAuth app connections, posting and interactions, short media, collections and quotes, streaming/push, account security, administration, and a first-party web client. Route coverage does not establish complete behavioral equivalence or certify a native app. No Cloudflare deployment has been performed.
 
-Read the [complete build plan](docs/build-plan.md) and [implementation/compatibility record](docs/implementation.md).
+- [Full architecture and build plan](docs/build-plan.md)
+- [Feature inventory, evidence and compatibility limits](docs/implementation.md)
+- [Deployment, recovery and operation](docs/operations.md)
+- [Pinned Mastodon REST routes](docs/mastodon-routes.json)
 
-## Run locally
+## Develop
 
-Use Node.js 24 or newer.
+Node.js 24 or newer:
 
 ```sh
 npm ci
 cp .dev.vars.example .dev.vars
 npm run db:migrate
-npm run dev
+npm run dev:local
 ```
 
-Set a long random `SETUP_TOKEN` in `.dev.vars`, then open `http://localhost:8787/setup` to create the owner. Setup closes permanently after the first account is created. Login uses an ordinary password and OAuth consent; Cloudflare Access is not required.
-
-Run `npm run check` for TypeScript checks, integration tests, and a Wrangler deploy dry-run. Tests need no Cloudflare credentials. Local text posting works without remote media services; image/video processing requires access to the Cloudflare Images/Media services. Test providers are used only in the integration suite. Failed media work remains in the durable job ledger.
-
-## Create a development deployment
-
-Start with new resources. The new schema is incompatible with an existing Wildebeest D1 database.
+Replace both example secrets with different random values. Open `http://localhost:8787/setup`, create the owner, then sign in. `dev:local` uses local D1/R2/Queues/DOs and omits the account-dependent Images/Media bindings. Use `npm run dev` with a connected Cloudflare account to exercise those providers. Integration tests substitute only remote providers and transport sends.
 
 ```sh
-npx wrangler login
-npx wrangler d1 create hyena
-npx wrangler r2 bucket create hyena-media
-npx wrangler queues create hyena-dead-letter
-npx wrangler queues create hyena-jobs
+npm run check
+npm audit --omit=dev
 ```
 
-Configure `wrangler.jsonc` with the returned D1 `database_id`, your canonical HTTPS `PUBLIC_ORIGIN` (no trailing slash), and your resource names. Configure a Worker custom domain matching that origin. Use the same origin for setup/login and for app connections; do not later change it after federation identity is established.
+The checks run TypeScript, workerd integration tests, a lossless SQLite snapshot test, and a Wrangler deployment dry-run. They do not deploy anything. Browser smoke instructions are in [operations](docs/operations.md#local-browser-check).
 
-Enable the Images/Media services for the account and confirm their current availability and billing. Configure R2 to abort incomplete multipart uploads after one day, retain final authored media, and keep the bucket private with no `r2.dev` or public custom-domain access. The Worker serves processed capability URLs. The runtime removes processed originals and seven-day-old unattached uploads.
+## Deploy a development instance
 
-```sh
-node scripts/check-deploy.mjs
-npm run db:migrate:remote
-npm run deploy
-npx wrangler secret put SETUP_TOKEN
-```
+Use **fresh resources**. Historical Wildebeest databases and Terraform are incompatible with this runtime.
 
-Use a random setup secret, create the owner through `/setup`, then remove the secret with `npx wrangler secret delete SETUP_TOKEN`. If setup is not yet configured the endpoint returns an explicit unavailable error. The deploy script rejects the checked-in placeholder database/origin. Deployment is manual; commits and pull requests run checks only.
+1. Set the canonical HTTPS `PUBLIC_ORIGIN`, resource names and custom domain in `wrangler.jsonc`. Treat the domain and actor identities as permanent.
+2. Review `npm run provision`. With account credentials configured, `npm run provision -- --execute` creates missing D1/R2/Queue resources and records the D1 ID. It does not deploy the Worker.
+3. Set a stable `KEY_ENCRYPTION_SECRET` before creating actor keys, sessions, VAPID keys or accounts. Back it up separately. Set `SETUP_TOKEN` for one-time owner setup.
+4. Enable Images and Media bindings in the Cloudflare account. Configure optional Email Service if registration or password-reset email is wanted.
+5. Follow the [deployment runbook](docs/operations.md), run the checks, apply migrations, then deploy. The GitHub deployment workflow is manual.
 
-The optional GitHub deployment workflow uses a `development` environment and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets. Provision resources and configure the domain before running it. It applies the new D1 migrations and deploys the selected branch. It does not enable federation or turn this alpha into a production-ready instance.
+After owner setup, remove **only** `SETUP_TOKEN`. Removing or replacing `KEY_ENCRYPTION_SECRET` makes encrypted identity keys and credentials unreadable. Registration is closed by default; invited/open/approval-based local accounts are supported.
 
 ## Media and costs
 
-- Audio and video must be **strictly shorter than 60 seconds**; longer files are rejected, not truncated.
-- Current formats: JPEG, PNG, WebP, H.264 MP4 with optional AAC, and MP3. Other formats still need implementation and provider testing.
-- Maximum upload: 40,000,000 bytes. Images: 40 megapixels, with processed output bounded to 2048×2048. Video: 1080p pixel matrix and average 60 FPS.
-- Media uploads return an asynchronous attachment. Poll `/api/v1/media/:id` until ready before posting. Processing errors return 422; pending uploads return 206.
-- MP3 uses pass-through after validation to avoid a conversion charge. Embedded tags remain; remove sensitive audio metadata before upload.
-- Processed media uses unguessable URLs. Anyone holding a URL can fetch those bytes. API visibility checks protect discovery of private statuses, not a leaked capability URL.
+Audio, video, and animated images must be **strictly shorter than 60 seconds**. Exact 60-second files are rejected. The input is probed before a paid transformation; it is not silently clipped.
 
-The design targets the approximately **US$5/month Workers Paid baseline** at small usage, plus a domain and charges above included allowances. This is a budget target, not a measured bill. Store transformed media once in R2 so views do not repeatedly pay for conversion. A 59-second video still consumes transformation work; monitor upload volume and beta Media pricing. See the [dated cost model](docs/build-plan.md#15-cost-model-and-cost-controls).
+Supported input is explicitly advertised: JPEG, PNG/APNG, WebP, GIF, HEIC/HEIF, H.264/AAC MP4 and MP3, subject to the actual configured limits. Uploads are capped at 40 MB; image input is additionally capped at 20 MB. Static images are limited to 40 MP, animations to 50 MP across frames, and video to a 1080p pixel matrix / average 60 FPS. Other codecs and containers are rejected. MP3 is remuxed without tags. Images and video use native bindings; successful processing deletes originals and stores reusable derivatives in R2. No FFmpeg service or Stream subscription is provisioned.
 
-Queues is retained because it handles retries and delivery cheaply at this scale. Durable Objects hibernate and keep persistent state; they are not immortal running processes. D1's transactional outbox protects committed work if Queues is temporarily unavailable.
+Media URLs are unguessable capabilities. Possessing a URL permits byte access; OAuth controls private-post discovery, not a copied media URL. The R2 bucket must remain private.
 
-## Repository layout
+The cost target is the **US$5/month Workers Paid baseline**, plus the domain, optional services and usage beyond included allowances. It is not a measured bill. The Media binding is currently a beta with no binding billing; this is not a promise of permanent free conversion. See the [dated cost assessment](docs/build-plan.md#15-cost-model-and-cost-controls). Application budgets bound uploads and transformations; they are not an account-wide billing cap.
 
-| Path                                                                            | Purpose                                                        |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `src/`                                                                          | New Worker, OAuth, posting, media, jobs and stream hub         |
-| `schema/`                                                                       | Fresh Hyena D1 migrations                                      |
-| `tests/`                                                                        | Workers-runtime integration tests and synthetic media fixtures |
-| `wrangler.jsonc`                                                                | Single Worker and native Cloudflare bindings                   |
-| `docs/build-plan.md`                                                            | Full researched architecture and release backlog               |
-| `docs/implementation.md`                                                        | Delivered behavior, limitations and next milestones            |
-| `backend/`, `functions/`, `frontend/`, `consumer/`, `do/`, `migrations/`, `tf/` | Historical Wildebeest reference, excluded from the new build   |
+Queues remains useful: a Durable Object has durable state but can hibernate or be evicted. It is not an immortal running worker. D1 stores committed job intent; Queues delivers references; a periodic sweep repairs lost sends and retries. See the [delivery design](docs/implementation.md#delivery-and-consistency).
 
-The [original README](docs/wildebeest-readme.md), source history, Apache-2.0 license and notices are retained. Historical client support claims apply to Wildebeest, not to this fresh implementation.
+## Source layout
+
+| Path                                                                            | Purpose                                                      |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `src/`, `public/`                                                               | Worker and first-party client                                |
+| `schema/`                                                                       | New, ordered D1 migrations                                   |
+| `tests/`, `scripts/test-backup.mjs`                                             | Runtime and snapshot tests                                   |
+| `scripts/`                                                                      | Provisioning, browser checks, backup, restore and notices    |
+| `wrangler.jsonc`                                                                | Cloudflare bindings and runtime configuration                |
+| `docs/`                                                                         | Plan, compatibility record, operation and dependency notices |
+| `backend/`, `functions/`, `frontend/`, `consumer/`, `do/`, `migrations/`, `tf/` | Historical Wildebeest source; excluded from the new build    |
+
+Apache-2.0 and upstream notices are retained. See [runtime dependency notices](docs/third-party-notices.md) and the [historical README](docs/wildebeest-readme.md). Historical Wildebeest client claims do not certify Hyena.

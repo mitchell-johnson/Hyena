@@ -2,6 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "hyena",
 	"main": "src/index.ts",
+	"assets": { "directory": "public", "binding": "ASSETS" },
 	"compatibility_date": "2026-09-10",
 	"compatibility_flags": ["nodejs_compat"],
 	"vars": {

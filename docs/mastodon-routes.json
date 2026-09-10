@@ -1,0 +1,1208 @@
+{
+  "reference": "Mastodon v4.7.1",
+  "api_version": 11,
+  "commit": "bc19d30b90403d9d058da301bcd7fafcc03fbf92",
+  "source": "https://github.com/mastodon/mastodon/blob/v4.7.1/config/routes/api.rb",
+  "routes": [
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/accounts/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/canonical_email_blocks/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/domain_allows/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/domain_blocks/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/email_domain_blocks/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/ip_blocks/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/announcements/:id/reactions/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/collections/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/collections/:id/items/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/conversations/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/domain_blocks"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/featured_tags/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/filters/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lists/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/lists/:id/accounts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/media/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/profile/avatar"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/profile/header"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/push/subscription"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/scheduled_statuses/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/statuses/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/suggestions/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1_alpha/collections/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1_alpha/collections/:id/items/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/filters/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/filters/keywords/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v2/filters/statuses/:id"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/web/push_subscriptions/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/oembed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/collections"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/endorsements"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/featured_tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/followers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/following"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/identity_proofs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/in_collections"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/lists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/:id/statuses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/familiar_followers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/lookup"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/relationships"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/verify_credentials"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/accounts/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/canonical_email_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/canonical_email_blocks/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_allows"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_allows/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/domain_blocks/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/email_domain_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/email_domain_blocks/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ip_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ip_blocks/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tags/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/links"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/links/publishers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/statuses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/trends/tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/announcements"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/annual_reports"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/annual_reports/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/annual_reports/:id/state"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/apps/verify_credentials"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bookmarks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/collections/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/custom_emojis"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/directory"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/domain_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/domain_blocks/preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/donation_campaigns"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/emails/check_confirmation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/endorsements"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/favourites"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/featured_tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/featured_tags/suggestions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filters"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/filters/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/follow_requests"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/followed_tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/activity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/domain_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/extended_description"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/languages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/peers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/privacy_policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/rules"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/terms_of_service"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/terms_of_service/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/instance/translation_languages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lists/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lists/:id/accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/markers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mutes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/requests"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/requests/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/requests/merged"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/unread_count"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/peers/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/polls/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/preferences"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/profile"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/push/subscription"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/scheduled_statuses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/scheduled_statuses/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id/context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id/favourited_by"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id/quotes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id/reblogged_by"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/statuses/:id/source"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/streaming/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/suggestions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tags/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/home"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/link"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/list/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/public"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/timelines/tag/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends/links"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends/statuses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trends/tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1_alpha/accounts/:id/collections"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1_alpha/accounts/:id/in_collections"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1_alpha/async_refreshes/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1_alpha/collections/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/admin/accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/:id/keywords"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/:id/statuses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/keywords/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/filters/statuses/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/instance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/:id/accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/notifications/unread_count"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/suggestions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/web/embeds/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/accounts/update_credentials"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/domain_blocks/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/ip_blocks/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/reports/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/tags/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/announcements/:id/reactions/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/collections/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/filters/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/lists/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/media/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/notifications/policy"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/profile"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/push/subscription"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/scheduled_statuses/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/statuses/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/statuses/:id/interaction_policy"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1_alpha/collections/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v2/filters/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v2/filters/keywords/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v2/notifications/policy"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/web/push_subscriptions/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/web/settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/block"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/email_subscriptions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/endorse"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/follow"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/mute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/note"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/pin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/remove_from_followers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/unblock"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/unendorse"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/unfollow"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/unmute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/:id/unpin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/action"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/enable"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/unsensitive"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/unsilence"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/accounts/:id/unsuspend"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/canonical_email_blocks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/canonical_email_blocks/test"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/dimensions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/domain_allows"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/domain_blocks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/email_domain_blocks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/ip_blocks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/measures"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/:id/assign_to_self"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/:id/reopen"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/:id/resolve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/reports/:id/unassign"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/retention"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/links/:id/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/links/:id/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/links/publishers/:id/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/links/publishers/:id/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/statuses/:id/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/statuses/:id/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/tags/:id/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/trends/tags/:id/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/announcements/:id/dismiss"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/annual_reports/:id/generate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/annual_reports/:id/read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/apps"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collections"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collections/:id/items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collections/:id/items/:id/revoke"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations/:id/unread"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/domain_blocks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/emails/confirmations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/featured_tags"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/filters"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/follow_requests/:id/authorize"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/follow_requests/:id/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lists"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lists/:id/accounts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/markers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/:id/dismiss"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/:id/accept"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/:id/dismiss"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/accept"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/requests/dismiss"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/polls/:id/votes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/push/subscription"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/bookmark"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/favourite"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/mute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/pin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/quotes/:id/revoke"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/reblog"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/translate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/unbookmark"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/unfavourite"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/unmute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/unpin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/statuses/:id/unreblog"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/:id/feature"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/:id/follow"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/:id/unfeature"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tags/:id/unfollow"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1_alpha/collections"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1_alpha/collections/:id/items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1_alpha/collections/:id/items/:id/revoke"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/filters"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/filters/:id/keywords"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/filters/:id/statuses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/media"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/notifications/:id/dismiss"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/notifications/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/api/web/push_subscriptions"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/domain_blocks/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/ip_blocks/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/reports/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/admin/tags/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/announcements/:id/reactions/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/collections/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/filters/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/lists/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/media/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/notifications/policy"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/profile"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/push/subscription"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/scheduled_statuses/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/statuses/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/statuses/:id/interaction_policy"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1_alpha/collections/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/filters/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/filters/keywords/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/notifications/policy"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/web/push_subscriptions/:id"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/web/settings"
+    }
+  ]
+}

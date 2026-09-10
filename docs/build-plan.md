@@ -780,7 +780,7 @@ No running Wildebeest database, media bucket or instance configuration was inspe
 
 These uncertainties do not prevent completing the design. They prevent honestly certifying an implementation before the experiments and release tests exist.
 
-## 21. Original execution order and updated deliverable status
+## 21. Original execution order and assessment-stage deliverable status
 
 Implementation has begun at the user’s request. **P0 remains an open release gate**, especially the live short-media corpus and real app connection spikes. Once a viable no-container media path is demonstrated, establish the fork/toolchain, then build the D1 transaction/outbox foundation before expanding endpoints. This order prevents months of API work from hiding a fundamental media or runtime incompatibility.
 
@@ -791,13 +791,24 @@ Implementation has begun at the user’s request. **P0 remains an open release g
 | Relevant latest Cloudflare capability, limit and pricing research | Completed, as of 10 September 2026 |
 | Architecture, data model, delivery alternatives, API coverage, media approach, cost model and complete phased plan | Documented in this report |
 | Remote GitHub fork and implementation branch | User supplied Hyena; implementation started on `feat/workers-foundation` |
-| New implementation, live deployment, client certification or measured hosting bill | Not performed; these are the planned build and release work |
+| New implementation | Implemented across C01–C32 in the subsequent build; see section 23 and the implementation record |
+| Live deployment, client certification or measured hosting bill | Not performed; external release validation remains required |
 
 The intended outcome is a small, inexpensive Cloudflare application with real Mastodon behavior. The release claim follows the compatibility evidence; the approximately $5 hosting goal follows measured usage and a proven media path.
 
 
-## 22. First implementation checkpoint
+## 22. First implementation checkpoint (historical)
 
-The user supplied Hyena and constrained every audio/video file to less than 60 seconds. The [implementation record](implementation.md) is the authoritative status of the first branch: owner/OAuth, local posting, D1 outbox, R2 short media orchestration and hibernating streams. The phase tables above define the complete future release, not a claim that this branch implements them. Full federation, recipient delivery, real-client coverage and production verification remain required. No containers or paid Stream fallback have been added.
+The user supplied Hyena and constrained every audio/video file to less than 60 seconds. The first branch checkpoint provided owner/OAuth, local posting, D1 outbox, R2 short media orchestration and hibernating streams. That checkpoint preceded the C01–C32 expansion in section 23. No containers or paid Stream fallback were added.
 
 **Validation checkpoint:** The first implementation passed 11 Workers-runtime integration tests, strict TypeScript checks and a Wrangler 4.130.0 deploy dry-run. Remote Images/Media providers and the queue send boundary are test doubles; the checks are not a live service or client certification.
+
+## 23. Full feature implementation checkpoint
+
+At the user's request, implementation continued through every C01–C32 feature area rather than stopping after the foundation. Version `0.2.0-alpha.1` includes the 300-route pinned REST inventory, Fedify-backed ActivityPub ingestion/delivery, app OAuth and scopes, graph/audience controls, full posting workflows, notifications, streaming and push, quotes/collections consent, account security, moderation and insights, community/annual features, data portability and a first-party browser client. The [implementation record](implementation.md) maps every area to concrete modules and records limits; the [operations runbook](operations.md) describes provisioning, keys, service configuration, backups, restore, diagnostics and deployment.
+
+The build uses the current Workers compatibility date and SQLite DO export configuration, Queues plus a D1 outbox, R2 range access, native Images/Media bindings and Cloudflare's structured Email Service API. It does not add containers, Redis, PostgreSQL, always-on compute, mandatory Workers AI, managed Stream storage, read replicas or another indexing service. Optional paid capabilities are reported disabled without a configured service. Dependency versions are locked; runtime license notices are included.
+
+The first-party client covers the principal feeds, posting/editing/polls/schedules/quotes, interactive profiles and threads, notifications, lists and collections, settings/security/passkeys, imports/exports and administration. A Chromium smoke test exercised setup, login, posting, 16 views and settings, including a mobile layout. Backups now include a lossless SQL exporter and R2 bytes/metadata/checksums; maintenance pauses requests and job execution during a snapshot. Domain moderation records lost relationships and supports owner CSV export.
+
+The implementation record gives the final local test counts, bundle measurement and dependency audit result. Protocol tests exercise both HTTP-signature standards, hostile ownership, deduplication, vocabulary extensions and Web Push crypto. They do not replace live two-server/native-client/provider/recovery tests. No Cloudflare account, custom domain, deployed peer or physical mobile app was connected in this build session. These are explicit unverified release gates, not a claim that API routes alone prove complete Mastodon equivalence. `api_versions.mastodon` remains 0 until that evidence supports raising it.
