@@ -1,36 +1,76 @@
-> :warning:  This project has been archived and is no longer actively maintained or supported. Feel free to fork this repository, explore the codebase, and adapt it to your needs. Wildebeest was an opportunity to showcase our technology stack's power and versatility and prove how anyone can use Cloudflare to build larger applications that involve multiple systems and complex requirements.
+# Hyena
 
-# Wildebeest
+A personal Mastodon-compatible server being built on Cloudflare Workers, D1, R2, Queues, and hibernating Durable Objects. Forked from [Wildebeest](https://github.com/cloudflare/wildebeest). No containers or always-on server.
 
-![wildebeest illustration](https://imagedelivery.net/NkfPDviynOyTAOI79ar_GQ/3654789b-089c-493a-85b4-be3f8f594c00/header)
+**Status: first implementation milestone, for development.** Owner login, OAuth app authorization, local posting, durable jobs, short-media processing, and basic WebSocket streams are implemented. Federation, the complete Mastodon API, and real app certification are still being built. Connecting an app may succeed while features it subsequently requests are unavailable.
 
-Wildebeest is an [ActivityPub](https://www.w3.org/TR/activitypub/) and [Mastodon](https://joinmastodon.org/)-compatible server whose goal is to allow anyone to operate their Fediverse server and identity on their domain without needing to keep infrastructure, with minimal setup and maintenance, and running in minutes.
+Read the [complete build plan](docs/build-plan.md) and [implementation/compatibility record](docs/implementation.md).
 
-Wildebeest runs on top Cloudflare's [Supercloud](https://blog.cloudflare.com/welcome-to-the-supercloud-and-developer-week-2022/), uses [Workers](https://workers.cloudflare.com/), [Pages](https://pages.cloudflare.com/), [Durable Objects](https://developers.cloudflare.com/workers/learning/using-durable-objects/), [Queues](https://developers.cloudflare.com/queues/), the [D1 database](https://developers.cloudflare.com/d1/) to store metadata and configurations, [Zero Trust Access](https://www.cloudflare.com/en-gb/products/zero-trust/access/) to handle authentication and [Images](https://www.cloudflare.com/en-gb/products/cloudflare-images/) for media handling.
+## Run locally
 
-Currently, Wildebeest supports the following features:
+Use Node.js 24 or newer.
 
-- [ActivityPub](https://www.w3.org/TR/activitypub/), [WebFinger](https://www.rfc-editor.org/rfc/rfc7033), [NodeInfo](https://github.com/cloudflare/wildebeest/tree/main/functions/nodeinfo), [WebPush](https://datatracker.ietf.org/doc/html/rfc8030) and [Mastodon-compatible](https://docs.joinmastodon.org/api/) APIs. Wildebeest can connect to or receive connections from other Fediverse servers.
-- Compatible with the most popular Mastodon [web](https://github.com/nolanlawson/pinafore) (like [Pinafore](https://github.com/nolanlawson/pinafore)), desktop, and [mobile clients](https://joinmastodon.org/apps). We also provide a simple read-only web interface to explore the timelines and user profiles.
-- You can publish, edit, boost, or delete posts, sorry, toots. We support text, images, and (soon) video.
-- Anyone can follow you; you can follow anyone.
-- You can search for content.
-- You can register one or multiple accounts under your instance. Authentication can be email-based on or using any Cloudflare Access compatible IdP, like GitHub or Google.
-- You can edit your profile information, avatar, and header image.
-- You can do [account migrations](https://docs.joinmastodon.org/user/moving/) from Mastodon to Wildebeest servers.
+```sh
+npm ci
+cp .dev.vars.example .dev.vars
+npm run db:migrate
+npm run dev
+```
 
-Cloudflare will continue to evolve this open-source project with additional features over time and listen to the community feedback to steer our priorities. Pull requests and issues are welcome too.
+Set a long random `SETUP_TOKEN` in `.dev.vars`, then open `http://localhost:8787/setup` to create the owner. Setup closes permanently after the first account is created. Login uses an ordinary password and OAuth consent; Cloudflare Access is not required.
 
-Please read our [announcement blog](https://blog.cloudflare.com/welcome-to-wildebeest-the-fediverse-on-cloudflare/) for more details on how we built Wildebeest.
+Run `npm run check` for TypeScript checks, integration tests, and a Wrangler deploy dry-run. Tests need no Cloudflare credentials. Local text posting works without remote media services; image/video processing requires access to the Cloudflare Images/Media services. Test providers are used only in the integration suite. Failed media work remains in the durable job ledger.
 
-## Tutorial
+## Create a development deployment
 
-Follow this tutorial to deploy Wildebeest:
+Start with new resources. The new schema is incompatible with an existing Wildebeest D1 database.
 
-- [Requirements](docs/requirements.md)
-- [Getting started](docs/getting-started.md)
-- [Access policy](docs/access-policy.md)
-- [Supported clients](docs/supported-clients.md)
-- [Updating Wildebeest](docs/updating.md)
-- [Other Cloudflare services](docs/other-services.md)
-- [Troubleshooting](docs/troubleshooting.md)
+```sh
+npx wrangler login
+npx wrangler d1 create hyena
+npx wrangler r2 bucket create hyena-media
+npx wrangler queues create hyena-dead-letter
+npx wrangler queues create hyena-jobs
+```
+
+Configure `wrangler.jsonc` with the returned D1 `database_id`, your canonical HTTPS `PUBLIC_ORIGIN` (no trailing slash), and your resource names. Configure a Worker custom domain matching that origin. Use the same origin for setup/login and for app connections; do not later change it after federation identity is established.
+
+Enable the Images/Media services for the account and confirm their current availability and billing. Configure R2 to abort incomplete multipart uploads after one day, retain final authored media, and keep the bucket private with no `r2.dev` or public custom-domain access. The Worker serves processed capability URLs. The runtime removes processed originals and seven-day-old unattached uploads.
+
+```sh
+node scripts/check-deploy.mjs
+npm run db:migrate:remote
+npm run deploy
+npx wrangler secret put SETUP_TOKEN
+```
+
+Use a random setup secret, create the owner through `/setup`, then remove the secret with `npx wrangler secret delete SETUP_TOKEN`. If setup is not yet configured the endpoint returns an explicit unavailable error. The deploy script rejects the checked-in placeholder database/origin. Deployment is manual; commits and pull requests run checks only.
+
+The optional GitHub deployment workflow uses a `development` environment and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets. Provision resources and configure the domain before running it. It applies the new D1 migrations and deploys the selected branch. It does not enable federation or turn this alpha into a production-ready instance.
+
+## Media and costs
+
+- Audio and video must be **strictly shorter than 60 seconds**; longer files are rejected, not truncated.
+- Current formats: JPEG, PNG, WebP, H.264 MP4 with optional AAC, and MP3. Other formats still need implementation and provider testing.
+- Maximum upload: 40,000,000 bytes. Images: 40 megapixels, with processed output bounded to 2048×2048. Video: 1080p pixel matrix and average 60 FPS.
+- Media uploads return an asynchronous attachment. Poll `/api/v1/media/:id` until ready before posting. Processing errors return 422; pending uploads return 206.
+- MP3 uses pass-through after validation to avoid a conversion charge. Embedded tags remain; remove sensitive audio metadata before upload.
+- Processed media uses unguessable URLs. Anyone holding a URL can fetch those bytes. API visibility checks protect discovery of private statuses, not a leaked capability URL.
+
+The design targets the approximately **US$5/month Workers Paid baseline** at small usage, plus a domain and charges above included allowances. This is a budget target, not a measured bill. Store transformed media once in R2 so views do not repeatedly pay for conversion. A 59-second video still consumes transformation work; monitor upload volume and beta Media pricing. See the [dated cost model](docs/build-plan.md#15-cost-model-and-cost-controls).
+
+Queues is retained because it handles retries and delivery cheaply at this scale. Durable Objects hibernate and keep persistent state; they are not immortal running processes. D1's transactional outbox protects committed work if Queues is temporarily unavailable.
+
+## Repository layout
+
+| Path                                                                            | Purpose                                                        |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `src/`                                                                          | New Worker, OAuth, posting, media, jobs and stream hub         |
+| `schema/`                                                                       | Fresh Hyena D1 migrations                                      |
+| `tests/`                                                                        | Workers-runtime integration tests and synthetic media fixtures |
+| `wrangler.jsonc`                                                                | Single Worker and native Cloudflare bindings                   |
+| `docs/build-plan.md`                                                            | Full researched architecture and release backlog               |
+| `docs/implementation.md`                                                        | Delivered behavior, limitations and next milestones            |
+| `backend/`, `functions/`, `frontend/`, `consumer/`, `do/`, `migrations/`, `tf/` | Historical Wildebeest reference, excluded from the new build   |
+
+The [original README](docs/wildebeest-readme.md), source history, Apache-2.0 license and notices are retained. Historical client support claims apply to Wildebeest, not to this fresh implementation.

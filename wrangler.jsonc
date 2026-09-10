@@ -1,0 +1,46 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "hyena",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-10",
+	"compatibility_flags": ["nodejs_compat"],
+	"vars": {
+		"PUBLIC_ORIGIN": "http://localhost:8787",
+		"INSTANCE_TITLE": "Hyena",
+		"INSTANCE_DESCRIPTION": "A personal home on the fediverse.",
+		"MAX_MEDIA_BYTES": "40000000",
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "hyena",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "schema",
+		},
+	],
+	"r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "hyena-media" }],
+	"queues": {
+		"producers": [{ "binding": "JOBS", "queue": "hyena-jobs" }],
+		"consumers": [
+			{
+				"queue": "hyena-jobs",
+				"max_batch_size": 10,
+				"max_batch_timeout": 1,
+				"max_retries": 5,
+				"max_concurrency": 2,
+				"dead_letter_queue": "hyena-dead-letter",
+			},
+		],
+	},
+	"durable_objects": { "bindings": [{ "name": "STREAMS", "class_name": "StreamHub" }] },
+	"exports": { "StreamHub": { "type": "durable-object", "storage": "sqlite" } },
+	"images": { "binding": "IMAGES" },
+	"media": { "binding": "MEDIA" },
+	"ratelimits": [{ "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
+	"triggers": { "crons": ["* * * * *"] },
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 0.1,
+		"logs": { "enabled": true, "invocation_logs": false },
+	},
+}
