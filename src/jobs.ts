@@ -12,6 +12,8 @@ import { sendEmail } from './profile'
 import { receiveExtension } from './federation/consent'
 import { fetchCard } from './community'
 import { processImport, processExport } from './lifecycle'
+import { followHistoryReadiness, processFollowHistory, type FollowHistoryPayload } from './federation/history'
+import type { FollowHistoryGuard } from './federation/history-types'
 
 interface JobErrorDiagnostic {
 	type: string
@@ -179,47 +181,67 @@ export async function executeJob(env: Env, id: string) {
 		]).catch(() => {})
 	}, 60000)
 	try {
-		const payload = JSON.parse(job.payload) as {
-			mediaId?: string
-			pollId?: string
-			statusId?: string
-			event?: string
-			scheduleId?: string
-			notificationId?: string
-			message: import('@fedify/fedify').Message
-			messageCipher?: string
-			actorId: string
-			accountId?: string
-			importId?: string
-			exportId?: string
-			activity: Record<string, unknown>
-			recipients: string[]
+		if (job.kind === 'federation.history') {
+			const readiness = await followHistoryReadiness(env, JSON.parse(job.payload) as FollowHistoryPayload)
+			if (readiness === 'wait') {
+				await run(
+					env,
+					"UPDATE jobs SET state='pending',available_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL,attempt=attempt-1 WHERE id=? AND lease_token=?",
+					Date.now() + 30000,
+					id,
+					lease
+				)
+				return
+			}
+			if (readiness === 'ready') await processFollowHistory(env, JSON.parse(job.payload) as FollowHistoryPayload)
+		} else {
+			const payload = JSON.parse(job.payload) as {
+				mediaId?: string
+				pollId?: string
+				statusId?: string
+				event?: string
+				scheduleId?: string
+				notificationId?: string
+				message: import('@fedify/fedify').Message
+				messageCipher?: string
+				actorId: string
+				accountId?: string
+				importId?: string
+				exportId?: string
+				activity: Record<string, unknown>
+				recipients: string[]
+				followHistory?: FollowHistoryGuard
+			}
+			if (job.kind === 'poll.close' && payload.pollId) await expirePoll(env, payload.pollId)
+			else if (job.kind === 'media.process' && payload.mediaId) await processMedia(env, payload.mediaId)
+			else if (job.kind === 'status.event' && payload.statusId) {
+				const status = await env.DB.prepare('SELECT * FROM statuses WHERE id=?')
+					.bind(payload.statusId)
+					.first<StatusRow>()
+				if (status) await statusEvent(env, status)
+			} else if (job.kind === 'federation.message')
+				await federationMessage(
+					env,
+					{
+						followHistory: payload.followHistory,
+						message: payload.messageCipher
+							? await unseal<import('@fedify/fedify').Message>(env, payload.messageCipher)
+							: payload.message,
+					},
+					{ id, token: lease }
+				)
+			else if (job.kind === 'federation.extension') await receiveExtension(env, payload)
+			else if (job.kind === 'card.fetch' && payload.statusId) await fetchCard(env, payload.statusId)
+			else if (job.kind === 'federation.send') await sendStored(env, payload)
+			else if (job.kind === 'schedule.publish' && payload.scheduleId) await publishScheduled(env, payload.scheduleId)
+			else if (job.kind === 'notification.push' && payload.notificationId)
+				await deliverPush(env, payload.notificationId)
+			else if (job.kind === 'account.import' && payload.importId) await processImport(env, payload.importId)
+			else if (job.kind === 'account.export' && payload.exportId) await processExport(env, payload.exportId)
+			else if (job.kind === 'account.event' && payload.accountId) await accountEvent(env, payload.accountId, job.id)
+			else if (job.kind === 'email.send') await sendEmail(env, JSON.parse(job.payload))
+			else throw new ApiError(422, 'Invalid durable job payload')
 		}
-		if (job.kind === 'poll.close' && payload.pollId) await expirePoll(env, payload.pollId)
-		else if (job.kind === 'media.process' && payload.mediaId) await processMedia(env, payload.mediaId)
-		else if (job.kind === 'status.event' && payload.statusId) {
-			const status = await env.DB.prepare('SELECT * FROM statuses WHERE id=?').bind(payload.statusId).first<StatusRow>()
-			if (status) await statusEvent(env, status)
-		} else if (job.kind === 'federation.message')
-			await federationMessage(
-				env,
-				{
-					message: payload.messageCipher
-						? await unseal<import('@fedify/fedify').Message>(env, payload.messageCipher)
-						: payload.message,
-				},
-				{ id, token: lease }
-			)
-		else if (job.kind === 'federation.extension') await receiveExtension(env, payload)
-		else if (job.kind === 'card.fetch' && payload.statusId) await fetchCard(env, payload.statusId)
-		else if (job.kind === 'federation.send') await sendStored(env, payload)
-		else if (job.kind === 'schedule.publish' && payload.scheduleId) await publishScheduled(env, payload.scheduleId)
-		else if (job.kind === 'notification.push' && payload.notificationId) await deliverPush(env, payload.notificationId)
-		else if (job.kind === 'account.import' && payload.importId) await processImport(env, payload.importId)
-		else if (job.kind === 'account.export' && payload.exportId) await processExport(env, payload.exportId)
-		else if (job.kind === 'account.event' && payload.accountId) await accountEvent(env, payload.accountId, job.id)
-		else if (job.kind === 'email.send') await sendEmail(env, JSON.parse(job.payload))
-		else throw new ApiError(422, 'Invalid durable job payload')
 		await env.DB.prepare(
 			`UPDATE jobs SET state='done',completed_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error=NULL WHERE id=? AND lease_token=?`
 		)

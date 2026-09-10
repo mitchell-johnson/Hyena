@@ -22,7 +22,7 @@ import { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
 // use a wider InstantLike type than polyfill 0.5.1. Isolate that type boundary.
 const instant = (value: string) => TemporalPolyfill.Instant.from(value) as unknown as Temporal.Instant
 import type { AccountRow, AppEnv, Env, StatusRow } from '../types'
-import { accountById, accountUri, all, now, one, parsed, statusUri } from '../data'
+import { accountById, accountUri, all, now, one, parsed, run, statusUri } from '../data'
 import { ApiError } from '../http'
 import { actorKeys } from './keys'
 import { D1KvStore, D1MessageQueue, type QueueJobLease } from './storage'
@@ -33,6 +33,8 @@ import { deliverExtension } from './consent'
 import { blocked } from '../policy'
 import { COLLECTION_CONTEXT } from '../collections'
 import { activityOrderingKey, outboundStatement } from './outbox'
+import { followHistoryAllowed } from './history'
+import type { FederationDeliveryMetadata } from './history-types'
 
 export async function actorDocument(env: Env, a: AccountRow) {
 	const ctx = (await federation(env)).createContext(new Request(env.PUBLIC_ORIGIN), env),
@@ -236,17 +238,30 @@ builder.setNodeInfoDispatcher('/nodeinfo/2.1', async (ctx) => ({
 builder.setInboxListeners('/users/{identifier}/inbox', '/inbox').on(Activity, receive)
 
 const outboxRetryPolicy = createExponentialBackoffPolicy({ maxAttempts: Infinity })
-export async function federation(env: Env, processing?: QueueJobLease) {
-	return builder.build({
+export async function federation(env: Env, processing?: QueueJobLease, delivery?: FederationDeliveryMetadata) {
+	const instance = await builder.build({
 		origin: { webOrigin: env.PUBLIC_ORIGIN, handleHost: accountDomain(env) },
 		kv: new D1KvStore(env),
-		queue: new D1MessageQueue(env, processing),
+		queue: new D1MessageQueue(env, processing, delivery),
 		// D1 owns the attempt and age limits, including administrator retries.
 		// Fedify must not silently abandon a task before the ledger records it.
 		outboxRetryPolicy: (context) => outboxRetryPolicy({ ...context, attempts: Math.min(context.attempts, 20) }),
 		manuallyStartQueue: true,
 		allowPrivateAddress: false,
 	})
+	if (processing)
+		instance.setOutboxPermanentFailureHandler(async (_ctx, failure) => {
+			// Fedify returns normally for permanent HTTP failures. Record them in
+			// the ledger so dependent history cannot mistake a rejection for delivery.
+			await run(
+				env,
+				"UPDATE jobs SET state='dead',lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error=? WHERE id=? AND state='processing' AND lease_token=?",
+				`Remote delivery permanently failed (${failure.reason}; HTTP ${failure.statusCode})`,
+				processing.id,
+				processing.token
+			)
+		})
+	return instance
 }
 export async function federationMiddleware(c: HonoContext<AppEnv>, next: () => Promise<void>) {
 	const url = new URL(c.req.url)
@@ -259,9 +274,22 @@ export async function federationMiddleware(c: HonoContext<AppEnv>, next: () => P
 	}
 	return honoFederation(await federation(c.env), () => c.env)(c, next)
 }
-export async function federationMessage(env: Env, payload: { message: Message }, processing?: QueueJobLease) {
+export async function federationMessage(
+	env: Env,
+	payload: { message: Message } & FederationDeliveryMetadata,
+	processing?: QueueJobLease
+) {
+	if (payload.followHistory && !(await followHistoryAllowed(env, payload.followHistory))) return
 	const current = await filterQueued(env, payload.message)
-	if (current) await (await federation(env, processing)).processQueuedTask(env, current)
+	if (current)
+		await (await federation(env, processing, { followHistory: payload.followHistory })).processQueuedTask(env, current)
+	if (current?.type === 'outbox' && processing)
+		await run(
+			env,
+			"UPDATE jobs SET payload=json_set(payload,'$.delivered',1) WHERE id=? AND state='processing' AND lease_token=?",
+			processing.id,
+			processing.token
+		)
 }
 export async function resolveAccount(env: Env, handle: string, context?: Context<Env>): Promise<AccountRow> {
 	const parts = handle.replace(/^@/, '').split('@')
@@ -283,15 +311,16 @@ export async function resolveAccount(env: Env, handle: string, context?: Context
 }
 export async function sendStored(
 	env: Env,
-	payload: { actorId: string; activity: Record<string, unknown>; recipients: string[] }
+	payload: { actorId: string; activity: Record<string, unknown>; recipients: string[] } & FederationDeliveryMetadata
 ) {
+	if (payload.followHistory && !(await followHistoryAllowed(env, payload.followHistory))) return
 	const a = await accountById(env, payload.actorId)
 	if (a.domain || (a.disabled && !['Delete', 'Undo'].includes(String(payload.activity.type)))) return
 	if (/Feature(Request|dCollection|dItem|Authorization)/.test(JSON.stringify(payload.activity))) {
 		await deliverExtension(env, payload)
 		return
 	}
-	const f = await federation(env),
+	const f = await federation(env, undefined, { followHistory: payload.followHistory }),
 		ctx = f.createContext(new URL(env.PUBLIC_ORIGIN), env),
 		recipients = []
 	for (const id of await currentRecipients(env, payload.activity, [...new Set(payload.recipients)])) {

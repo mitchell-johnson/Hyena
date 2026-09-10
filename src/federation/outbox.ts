@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import type { FederationDeliveryMetadata } from './history-types'
 
 export function activityOrderingKey(activity: Record<string, unknown>, fallback?: string): string {
 	const object = activity.object as Record<string, unknown> | string | undefined,
@@ -21,13 +22,15 @@ export function outboundStatement(
 	activity: Record<string, unknown>,
 	recipients: string[],
 	id = crypto.randomUUID(),
-	guard?: { sql: string; binds: (string | number | null)[] }
+	guard?: { sql: string; binds: (string | number | null)[] },
+	delivery?: FederationDeliveryMetadata
 ) {
 	return env.DB.prepare(
 		`INSERT OR IGNORE INTO jobs(id,kind,payload,available_at,created_at) SELECT ?,'federation.send',?,?,? ${guard ? 'WHERE ' + guard.sql : ''}`
 	).bind(
 		'outbound:' + id,
 		JSON.stringify({
+			...delivery,
 			actorId,
 			orderingKey: 'outbox:' + activityOrderingKey(activity, actorId),
 			activity: {

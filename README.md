@@ -22,6 +22,8 @@ After signing in, update your profile in **Settings**, search for someone using 
 
 The follow button shows **Requested** while the other server processes the request or the person approves it, then **Following** once accepted. Select it again to cancel or unfollow. If your profile requires follower approval, incoming requests are under **Notifications → Follow requests**.
 
+When a new follower from another server is accepted (automatically unless your profile requires approval), Hyena shares up to 20 of your recent public posts with their original dates and delivers future posts normally. These recent posts can take a few minutes to arrive; to find an older post, search for its exact URL.
+
 ### Connect a Mastodon app
 
 1. In the app, choose to sign in to an existing account.

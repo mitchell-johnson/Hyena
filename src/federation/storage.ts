@@ -10,6 +10,7 @@ import { seal } from './keys'
 import { digest } from '../auth/crypto'
 import type { Env } from '../types'
 import { all, one, run } from '../data'
+import type { FederationDeliveryMetadata } from './history-types'
 
 export class D1KvStore implements KvStore {
 	constructor(private env: Env) {}
@@ -79,7 +80,8 @@ export class D1MessageQueue implements MessageQueue {
 	readonly nativeRetrial = true
 	constructor(
 		private env: Env,
-		private processing?: QueueJobLease
+		private processing?: QueueJobLease,
+		private metadata?: FederationDeliveryMetadata
 	) {}
 	async enqueue(message: unknown, options?: MessageQueueEnqueueOptions) {
 		const time = Date.now(),
@@ -95,9 +97,19 @@ export class D1MessageQueue implements MessageQueue {
 					type,
 					activityId,
 					m.type === 'outbox' ? m.inbox : m.type === 'fanout' ? Object.keys(m.inboxes) : '',
+					// A cancelled follow's guarded packet may never have reached
+					// the server. A new follow gets a fresh delivery attempt; the
+					// ActivityPub Create and object IDs still deduplicate the post.
+					...(this.metadata?.followHistory ? [this.metadata.followHistory.followUri] : []),
 				])
 			))
-		const payload = JSON.stringify({ messageCipher: await seal(this.env, message), orderingKey: order }),
+		const payload = JSON.stringify({
+				messageCipher: await seal(this.env, message),
+				orderingKey: order,
+				activityId,
+				messageType: type,
+				...(this.metadata?.followHistory ? { followHistory: this.metadata.followHistory } : {}),
+			}),
 			available = time + (options?.delay?.total('milliseconds') ?? 0)
 		if (this.processing?.id === id) {
 			// Fedify can re-enqueue a task for Retry-After or a circuit hold even
