@@ -1,0 +1,2 @@
+SETUP_TOKEN=replace-with-a-long-random-local-token
+KEY_ENCRYPTION_SECRET=replace-with-a-different-random-secret-at-least-32-characters

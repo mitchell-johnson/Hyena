@@ -1,0 +1,13 @@
+ALTER TABLE annual_reports ADD COLUMN share_key TEXT;
+ALTER TABLE annual_reports ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 2;
+CREATE TABLE trend_reviews(kind TEXT NOT NULL,item_id TEXT NOT NULL,approved INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL,PRIMARY KEY(kind,item_id));
+CREATE TABLE activity_metrics(day TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES accounts(id),kind TEXT NOT NULL,total INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(day,account_id,kind));
+CREATE INDEX metrics_day ON activity_metrics(day,kind);
+CREATE TABLE delivery_receipts(activity_id TEXT NOT NULL,inbox TEXT NOT NULL,delivered_at TEXT NOT NULL,PRIMARY KEY(activity_id,inbox));
+CREATE TABLE quote_requests(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES accounts(id),target_id TEXT NOT NULL REFERENCES statuses(id),quote_uri TEXT NOT NULL,authorization TEXT,state TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE feature_requests(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES accounts(id),target_id TEXT NOT NULL REFERENCES accounts(id),collection_uri TEXT NOT NULL,authorization TEXT,state TEXT NOT NULL,created_at TEXT NOT NULL);
+ALTER TABLE collection_items ADD COLUMN request_uri TEXT;
+ALTER TABLE scheduled_statuses ADD COLUMN generation INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE scheduled_statuses ADD COLUMN lease_until INTEGER;
+CREATE TABLE security_challenges(id TEXT PRIMARY KEY,account_id TEXT REFERENCES accounts(id),kind TEXT NOT NULL,data TEXT NOT NULL,expires_at INTEGER NOT NULL);
+CREATE INDEX challenges_expiry ON security_challenges(expires_at);

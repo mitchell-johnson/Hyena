@@ -1,0 +1,5 @@
+ALTER TABLE account_exports ADD COLUMN cursor TEXT;
+ALTER TABLE account_exports ADD COLUMN boundary TEXT;
+ALTER TABLE account_exports ADD COLUMN pages INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE usage_counters(period TEXT NOT NULL,kind TEXT NOT NULL,total INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(period,kind));
+CREATE TABLE usage_charges(id TEXT PRIMARY KEY,period TEXT NOT NULL,kind TEXT NOT NULL,amount INTEGER NOT NULL);
