@@ -42,6 +42,14 @@ async function json(path: string, body: unknown, token?: string, extra: Record<s
 		body: JSON.stringify(body),
 	})
 }
+
+async function encodedInput(path: string, values: Record<string, unknown>, encoding: string) {
+	if (encoding === 'JSON') return json(path, values)
+	const body = encoding === 'multipart' ? new FormData() : new URLSearchParams()
+	for (const [key, value] of Object.entries(values))
+		if (value !== null && value !== undefined) body.append(key, String(value))
+	return request(path, { method: 'POST', body })
+}
 const cookie = (response: Response, name: string) =>
 	response.headers
 		.getSetCookie()
@@ -90,91 +98,103 @@ afterEach(async () => {
 })
 
 describe('owner and OAuth', () => {
-	it('completes setup, login, consent, PKCE exchange, replay rejection and revocation', async () => {
-		const setup = await request('/setup'),
-			setupCookie = cookie(setup, 'hyena_form')
-		const setupForm = new URLSearchParams({
-			csrf: csrf(await setup.text()),
-			setup_token: env.SETUP_TOKEN!,
-			username: 'Owner',
-			password: 'correct-horse-battery-42',
-		})
-		const created = await request('/setup', {
-			method: 'POST',
-			headers: { Origin: env.PUBLIC_ORIGIN, Cookie: setupCookie },
-			body: setupForm,
-		})
-		expect(created.status).toBe(303)
-		expect((await request('/setup')).headers.get('Location')).toBe('/login')
-		const login = await request('/login'),
-			loginCookie = cookie(login, 'hyena_form')
-		const signedIn = await request('/login', {
-			method: 'POST',
-			headers: { Origin: env.PUBLIC_ORIGIN, Cookie: loginCookie },
-			body: new URLSearchParams({
-				csrf: csrf(await login.text()),
-				username: 'owner',
+	it.each(['JSON', 'URL-encoded', 'multipart'])(
+		'completes setup, login, consent, PKCE exchange, replay rejection and revocation with %s input',
+		async (encoding) => {
+			const setup = await request('/setup'),
+				setupCookie = cookie(setup, 'hyena_form')
+			const setupForm = new URLSearchParams({
+				csrf: csrf(await setup.text()),
+				setup_token: env.SETUP_TOKEN!,
+				username: 'Owner',
 				password: 'correct-horse-battery-42',
-			}),
-		})
-		expect(signedIn.status).toBe(303)
-		const session = cookie(signedIn, 'hyena_session')
-		const registered = await json('/api/v1/apps', {
-			client_name: 'Test app',
-			redirect_uris: 'hyena-test://callback',
-			scopes: 'read write profile',
-		})
-		expect(registered.status).toBe(200)
-		const app = await registered.json<{ client_id: string; client_secret: string }>()
-		const verifier = randomToken(),
-			params = new URLSearchParams({
-				client_id: app.client_id,
-				redirect_uri: 'hyena-test://callback',
-				response_type: 'code',
-				scope: 'read write profile',
-				state: 'opaque state',
-				code_challenge: await digest(verifier),
-				code_challenge_method: 'S256',
 			})
-		const consent = await request('/oauth/authorize?' + params, { headers: { Cookie: session } })
-		expect(consent.status).toBe(200)
-		params.set('csrf', csrf(await consent.text()))
-		params.set('decision', 'allow')
-		const approved = await request('/oauth/authorize', {
-			method: 'POST',
-			headers: { Origin: env.PUBLIC_ORIGIN, Cookie: session },
-			body: params,
-		})
-		expect(approved.status).toBe(303)
-		const location = new URL(approved.headers.get('Location')!)
-		expect(location.searchParams.get('state')).toBe('opaque state')
-		const exchange = {
-			...app,
-			grant_type: 'authorization_code',
-			code: location.searchParams.get('code'),
-			redirect_uri: 'hyena-test://callback',
-			code_verifier: verifier,
-		}
-		expect((await json('/oauth/token', { ...exchange, code_verifier: randomToken() })).status).toBe(400)
-		const tokens = await Promise.all([json('/oauth/token', exchange), json('/oauth/token', exchange)])
-		expect(tokens.map((r) => r.status).sort()).toEqual([200, 400])
-		const token = await tokens.find((r) => r.status === 200)!.json<{ access_token: string }>()
-		const account = await request('/api/v1/accounts/verify_credentials', {
-			headers: { Authorization: `Bearer ${token.access_token}` },
-		})
-		expect(account.status).toBe(200)
-		const accountBody = await account.json<Record<string, unknown>>()
-		expect(accountBody.username).toBe('owner')
-		expect(accountBody.password_hash).toBeUndefined()
-		expect((await json('/oauth/revoke', { ...app, token: token.access_token })).status).toBe(200)
-		expect(
-			(
-				await request('/api/v1/accounts/verify_credentials', {
-					headers: { Authorization: `Bearer ${token.access_token}` },
+			const created = await request('/setup', {
+				method: 'POST',
+				headers: { Origin: env.PUBLIC_ORIGIN, Cookie: setupCookie },
+				body: setupForm,
+			})
+			expect(created.status).toBe(303)
+			expect((await request('/setup')).headers.get('Location')).toBe('/login')
+			const login = await request('/login'),
+				loginCookie = cookie(login, 'hyena_form')
+			const signedIn = await request('/login', {
+				method: 'POST',
+				headers: { Origin: env.PUBLIC_ORIGIN, Cookie: loginCookie },
+				body: new URLSearchParams({
+					csrf: csrf(await login.text()),
+					username: 'owner',
+					password: 'correct-horse-battery-42',
+				}),
+			})
+			expect(signedIn.status).toBe(303)
+			const session = cookie(signedIn, 'hyena_session')
+			const registered = await encodedInput(
+				'/api/v1/apps',
+				{
+					client_name: 'Test app',
+					redirect_uris: 'hyena-test://callback',
+					scopes: 'read write profile',
+				},
+				encoding
+			)
+			expect(registered.status).toBe(200)
+			const app = await registered.json<{ client_id: string; client_secret: string }>()
+			const verifier = randomToken(),
+				params = new URLSearchParams({
+					client_id: app.client_id,
+					redirect_uri: 'hyena-test://callback',
+					response_type: 'code',
+					scope: 'read write profile',
+					state: 'opaque state',
+					code_challenge: await digest(verifier),
+					code_challenge_method: 'S256',
 				})
-			).status
-		).toBe(401)
-	})
+			const consent = await request('/oauth/authorize?' + params, { headers: { Cookie: session } })
+			expect(consent.status).toBe(200)
+			params.set('csrf', csrf(await consent.text()))
+			params.set('decision', 'allow')
+			const approved = await request('/oauth/authorize', {
+				method: 'POST',
+				headers: { Origin: env.PUBLIC_ORIGIN, Cookie: session },
+				body: params,
+			})
+			expect(approved.status).toBe(303)
+			const location = new URL(approved.headers.get('Location')!)
+			expect(location.searchParams.get('state')).toBe('opaque state')
+			const exchange = {
+				...app,
+				grant_type: 'authorization_code',
+				code: location.searchParams.get('code'),
+				redirect_uri: 'hyena-test://callback',
+				code_verifier: verifier,
+			}
+			expect((await encodedInput('/oauth/token', { ...exchange, code_verifier: randomToken() }, encoding)).status).toBe(
+				400
+			)
+			const tokens = await Promise.all([
+				encodedInput('/oauth/token', exchange, encoding),
+				encodedInput('/oauth/token', exchange, encoding),
+			])
+			expect(tokens.map((r) => r.status).sort()).toEqual([200, 400])
+			const token = await tokens.find((r) => r.status === 200)!.json<{ access_token: string }>()
+			const account = await request('/api/v1/accounts/verify_credentials', {
+				headers: { Authorization: `Bearer ${token.access_token}` },
+			})
+			expect(account.status).toBe(200)
+			const accountBody = await account.json<Record<string, unknown>>()
+			expect(accountBody.username).toBe('owner')
+			expect(accountBody.password_hash).toBeUndefined()
+			expect((await encodedInput('/oauth/revoke', { ...app, token: token.access_token }, encoding)).status).toBe(200)
+			expect(
+				(
+					await request('/api/v1/accounts/verify_credentials', {
+						headers: { Authorization: `Bearer ${token.access_token}` },
+					})
+				).status
+			).toBe(401)
+		}
+	)
 	it('rejects CSRF, unsafe redirects, scope escalation and app-only posting', async () => {
 		expect(
 			(

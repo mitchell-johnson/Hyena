@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono'
+import { accountDomain } from './identity'
 import { getCookie } from 'hono/cookie'
 import { requireWeb } from './auth/security'
 import { digest, randomToken } from './auth/crypto'
@@ -190,10 +191,11 @@ async function publicStatus(c: Context<AppEnv>, id: string, embed = false) {
 		throw new ApiError(404, 'Record not found')
 	return { s, json: await statusJSON(c.env, s, embed ? null : (session?.account_id ?? null)) }
 }
-web.get('/@:username/:id', async (c, next) => {
+web.get('/:username{@[a-zA-Z0-9_]+}/:id', async (c, next) => {
 	if (c.req.param('id') === 'embed') return next()
 	const { s, json } = await publicStatus(c, c.req.param('id'))
-	if (json.account.username !== c.req.param('username') || !s.local) throw new ApiError(404, 'Record not found')
+	if (json.account.username !== c.req.param('username').slice(1) || !s.local)
+		throw new ApiError(404, 'Record not found')
 	if (/application\/(?:activity\+json|ld\+json)/.test(c.req.header('Accept') ?? ''))
 		return c.redirect(String(json.uri), 302)
 	if (await webSession(c)) return c.html(shell(c.env.INSTANCE_TITLE))
@@ -208,12 +210,12 @@ web.get('/@:username/:id', async (c, next) => {
 		)
 	)
 })
-web.get('/@:username', async (c) => {
+web.get('/:username{@[a-zA-Z0-9_]+}', async (c) => {
 	const session = await webSession(c),
 		a = await one<AccountRow>(
 			c.env,
 			"SELECT * FROM accounts WHERE username=? AND domain='' AND suspended=0",
-			c.req.param('username')!
+			c.req.param('username')!.slice(1)
 		)
 	if (!a) throw new ApiError(404, 'Record not found')
 	if (session) return c.html(shell(c.env.INSTANCE_TITLE, session.csrf))
@@ -228,13 +230,13 @@ web.get('/@:username', async (c) => {
 	return c.html(
 		page(
 			'@' + a.username,
-			`<h1>${escapeHtml(a.display_name || a.username)}</h1><p>@${escapeHtml(a.username)}</p><div>${a.note}</div>${a.moved_to_id ? '<p>This account has moved.</p>' : ''}${rows.map((s) => `<article>${s.spoiler_text ? `<details><summary>${escapeHtml(s.spoiler_text)}</summary>` : ''}${s.content}${s.spoiler_text ? '</details>' : ''}<p><a href="/@${escapeHtml(a.username)}/${s.id}">${escapeHtml(s.created_at)}</a></p></article>`).join('')}`
+			`<h1>${escapeHtml(a.display_name || a.username)}</h1><p>@${escapeHtml(a.username)}@${escapeHtml(accountDomain(c.env))}</p><div>${a.note}</div>${a.moved_to_id ? '<p>This account has moved.</p>' : ''}${rows.map((s) => `<article>${s.spoiler_text ? `<details><summary>${escapeHtml(s.spoiler_text)}</summary>` : ''}${s.content}${s.spoiler_text ? '</details>' : ''}<p><a href="/@${escapeHtml(a.username)}/${s.id}">${escapeHtml(s.created_at)}</a></p></article>`).join('')}`
 		)
 	)
 })
-web.get('/@:username/:id/embed', async (c) => {
+web.get('/:username{@[a-zA-Z0-9_]+}/:id/embed', async (c) => {
 	const { s, json } = await publicStatus(c, c.req.param('id'), true)
-	if (json.account.username !== c.req.param('username')) throw new ApiError(404, 'Record not found')
+	if (json.account.username !== c.req.param('username').slice(1)) throw new ApiError(404, 'Record not found')
 	c.header(
 		'Content-Security-Policy',
 		"default-src 'none'; style-src 'unsafe-inline'; img-src 'self' https:; frame-ancestors *; base-uri 'none'"

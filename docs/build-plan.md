@@ -1,8 +1,8 @@
-# Hyena: Wildebeest assessment and complete implementation plan
+# Hyena architecture and implementation plan
 
 **Research cut-off:** 10 September 2026, UTC
 **Constraints:** No containers. Minimize recurring cost. Support Mastodon posting, federation, and unmodified Mastodon apps.
-**Status:** Implementation started in [mitchell-johnson/Hyena](https://github.com/mitchell-johnson/Hyena), branch `feat/workers-foundation`. See [the implementation record](implementation.md) for delivered behavior and remaining gates. No live deployment or real-client certification has been performed.
+**Status:** Historical design and source assessment, followed by the implementation merged in [PR #1](https://github.com/mitchell-johnson/Hyena/pull/1). A development instance is deployed on Cloudflare. See [the implementation record](implementation.md) for delivered behavior and remaining checks, and [operations](operations.md) for current setup instructions. The legacy application has been removed; upstream source links below document the original assessment.
 
 **Updated constraint:** All audio and video must be strictly shorter than 60 seconds. The first implementation validates duration and uses R2, Images, and Media Transformations. Managed Stream is excluded from the baseline; the fallback discussion below is historical contingency planning for codec gaps, not an enabled service.
 
@@ -50,7 +50,7 @@ These are planning defaults, not claims about an existing production account or 
 
 Sources: [Wildebeest baseline](https://github.com/cloudflare/wildebeest/tree/b056670a7204bc4d852c8a0cda9a3c9e39f8a0e1), [Mastodon baseline](https://github.com/mastodon/mastodon/tree/bc19d30b90403d9d058da301bcd7fafcc03fbf92), [Fedify release](https://github.com/fedify-dev/fedify/releases/tag/2.3.6).
 
-**Remote fork status:** The user supplied [mitchell-johnson/Hyena](https://github.com/mitchell-johnson/Hyena). Its initial `main` is the audited Wildebeest SHA. The implementation uses `feat/workers-foundation`, retains the old source as reference, and adds a fresh runtime and a separate D1 schema. It does not publish to Cloudflare's upstream repository.
+**Repository history:** [mitchell-johnson/Hyena](https://github.com/mitchell-johnson/Hyena) began at the audited Wildebeest SHA. The replacement runtime and separate D1 schema were merged into `main`; the legacy source was subsequently removed. The upstream commit links below preserve the evidence behind the original design decisions.
 
 ### 2.2 Findings from actual code
 

@@ -31,6 +31,7 @@ export interface Env {
 	MEDIA: MediaService
 	AUTH_LIMITER?: { limit(input: { key: string }): Promise<{ success: boolean }> }
 	PUBLIC_ORIGIN: string
+	ACCOUNT_DOMAIN?: string
 	INSTANCE_TITLE: string
 	INSTANCE_DESCRIPTION: string
 	MAX_MEDIA_BYTES?: string

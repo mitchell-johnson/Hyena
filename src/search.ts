@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { isLocalAccountDomain } from './identity'
 import { authenticate, optionalAccount } from './auth/access'
 import { all, one, run, pageLimit, accountById } from './data'
 import { ApiError } from './http'
@@ -37,7 +38,7 @@ async function accountSearch(
 search.get('/api/v1/accounts/lookup', async (c) => {
 	const acct = (c.req.query('acct') ?? '').replace(/^@/, ''),
 		parts = acct.split('@'),
-		domain = parts[1] === new URL(c.env.PUBLIC_ORIGIN).host ? '' : (parts[1] ?? '')
+		domain = isLocalAccountDomain(c.env, parts[1]) ? '' : parts[1]!
 	const a = await one<AccountRow>(
 		c.env,
 		`SELECT * FROM accounts a WHERE username=? AND domain=? AND suspended=0 AND ${allowedAccountSQL()}`,

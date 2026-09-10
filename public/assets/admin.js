@@ -23,15 +23,22 @@ export async function administration(root) {
 }
 async function overview(root) {
 	const health = await api('/api/hyena/admin/health')
-	root.innerHTML = `<h2>Instance health</h2><p>Hyena ${esc(health.version)}</p><table><caption>Background work</caption><thead><tr><th>Type</th><th>State</th><th>Jobs</th></tr></thead><tbody>${health.jobs.map((j) => `<tr><td>${esc(j.kind)}</td><td>${esc(j.state)}</td><td>${j.count}</td></tr>`).join('')}</tbody></table><h3>Failed jobs</h3>`
-	for (const job of await api('/api/hyena/admin/jobs')) {
+	const states = { done: 'Completed', pending: 'Waiting', queued: 'Queued', processing: 'Running', dead: 'Failed' }
+	root.innerHTML = `<h2>Instance health</h2><p>Hyena ${esc(health.version)}</p><table><caption>Background work</caption><thead><tr><th>Type</th><th>State</th><th>Jobs</th></tr></thead><tbody>${health.jobs.map((j) => `<tr><td>${esc(j.kind)}</td><td>${esc(states[j.state] || j.state)}</td><td>${j.count}</td></tr>`).join('')}</tbody></table><h3>Jobs needing attention</h3>`
+	const jobs = await api('/api/hyena/admin/jobs')
+	if (!jobs.length) root.insertAdjacentHTML('beforeend', '<p>No failed jobs or retries waiting.</p>')
+	for (const job of jobs) {
 		const el = document.createElement('article')
-		el.innerHTML = `<p>${esc(job.kind)} · ${esc(job.state)}</p><p>${esc(job.last_error)}</p>`
+		const state =
+			job.state === 'dead' ? 'Failed' : job.state === 'processing' ? 'Retry running' : 'Automatic retry pending'
+		el.innerHTML = `<p>${esc(job.kind)} · ${state} · Attempts: ${job.attempt}</p><p>${esc(job.last_error)}</p>`
+		if (job.state === 'pending')
+			el.insertAdjacentHTML('beforeend', `<p>Next attempt: ${esc(new Date(job.available_at).toLocaleString())}</p>`)
 		if (job.state === 'dead')
 			el.append(
 				button('Retry', async () => {
 					await post('/api/hyena/admin/jobs/' + encodeURIComponent(job.id) + '/retry')
-					el.remove()
+					await overview(root)
 				})
 			)
 		root.append(el)

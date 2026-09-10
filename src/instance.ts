@@ -1,3 +1,4 @@
+import { accountDomain } from './identity'
 import { Hono } from 'hono'
 import { all, one, parsed, setting, now } from './data'
 import { accountJSON } from './serializers'
@@ -75,7 +76,7 @@ instance.on('GET', ['/ready', '/health/ready'], async (c) => {
 instance.get('/api/v2/instance', async (c) => {
 	const d = await details(c.env)
 	return c.json({
-		domain: new URL(c.env.PUBLIC_ORIGIN).host,
+		domain: accountDomain(c.env),
 		title: c.env.INSTANCE_TITLE,
 		version: VERSION + '+hyena',
 		source_url: 'https://github.com/mitchell-johnson/Hyena',
@@ -109,7 +110,7 @@ instance.get('/api/v2/instance', async (c) => {
 instance.get('/api/v1/instance', async (c) => {
 	const d = await details(c.env)
 	return c.json({
-		uri: new URL(c.env.PUBLIC_ORIGIN).host,
+		uri: accountDomain(c.env),
 		title: c.env.INSTANCE_TITLE,
 		short_description: c.env.INSTANCE_DESCRIPTION,
 		description: await setting(c.env, 'extended_description', c.env.INSTANCE_DESCRIPTION),

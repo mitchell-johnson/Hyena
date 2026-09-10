@@ -1,6 +1,9 @@
 import type { Context } from 'hono'
 import type { AppEnv } from './types'
 
+export const CONTENT_SECURITY_POLICY =
+	"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: blob:; media-src 'self' https: blob:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+
 export class ApiError extends Error {
 	constructor(
 		public status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 501 | 503,
@@ -69,7 +72,8 @@ export async function readInput(request: Request, maxBytes = 65536): Promise<Rec
 		offset += chunk.length
 	}
 	const text = new TextDecoder().decode(bytes)
-	const type = request.headers.get('content-type')?.split(';')[0]
+	const contentType = request.headers.get('content-type') ?? ''
+	const type = contentType.split(';')[0]?.trim().toLowerCase()
 	if (type === 'application/json') {
 		try {
 			const result: unknown = JSON.parse(text)
@@ -79,9 +83,29 @@ export async function readInput(request: Request, maxBytes = 65536): Promise<Rec
 		}
 		throw new ApiError(400, 'Expected a JSON object')
 	}
-	if (type !== 'application/x-www-form-urlencoded') throw new ApiError(415, 'Use JSON or form-urlencoded input')
+	let fields: Iterable<[string, string]>
+	if (type === 'multipart/form-data') {
+		let form: FormData
+		try {
+			// Parse only after enforcing the byte limit, then apply the same field
+			// validation used for URL-encoded forms. File uploads have separate handlers.
+			form = await new Response(bytes, { headers: { 'Content-Type': contentType } }).formData()
+		} catch {
+			throw new ApiError(400, 'Invalid multipart form data')
+		}
+		const entries: [string, string][] = []
+		for (const [key, value] of form) {
+			if (typeof value !== 'string') throw new ApiError(400, 'File uploads are not supported for this request')
+			entries.push([key, value])
+		}
+		fields = entries
+	} else if (type === 'application/x-www-form-urlencoded') {
+		fields = new URLSearchParams(text)
+	} else {
+		throw new ApiError(415, 'Use JSON, form-urlencoded or multipart form input')
+	}
 	const result: Record<string, unknown> = Object.create(null)
-	for (const [key, value] of new URLSearchParams(text)) {
+	for (const [key, value] of fields) {
 		if (!/^[A-Za-z0-9_:-]+(?:\[[A-Za-z0-9_:-]*\])*$/.test(key)) throw new ApiError(400, 'Invalid form field')
 		const parts = [...key.matchAll(/([^\[\]]+)|\[()\]/g)].map((m) => m[1] ?? '')
 		if (parts.length > 6 || parts.some((p) => ['__proto__', 'prototype', 'constructor'].includes(p)))
