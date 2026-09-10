@@ -468,23 +468,16 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 			await env.DB.batch(statements)
 		}
 	} else if (activity instanceof Accept || activity instanceof Reject) {
-		const original = await activity.getObject(ctx)
-		if (original instanceof Follow && original.id) {
-			const f = await one<{ id: string }>(
+		// Mastodon can reference the original Follow by URI instead of embedding
+		// it. Our ledger identifies the exact request and its intended recipient;
+		// dereferencing that URI is unnecessary and may not be supported.
+		if (activity.objectId)
+			await run(
 				env,
-				'SELECT id FROM follows WHERE activity_uri=? AND following_id=?',
-				original.id.href,
+				`${activity instanceof Accept ? "UPDATE follows SET state='accepted'" : 'DELETE FROM follows'} WHERE activity_uri=? AND following_id=? AND EXISTS(SELECT 1 FROM accounts a WHERE a.id=follows.follower_id AND a.domain='')`,
+				activity.objectId.href,
 				actor.id
 			)
-			if (f)
-				await run(
-					env,
-					activity instanceof Accept
-						? "UPDATE follows SET state='accepted' WHERE id=?"
-						: 'DELETE FROM follows WHERE id=?',
-					f.id
-				)
-		}
 	} else if (activity instanceof Create || activity instanceof Update) {
 		const obj = await activity.getObject(ctx)
 		if (obj && isActor(obj)) {
