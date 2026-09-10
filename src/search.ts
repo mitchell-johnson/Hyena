@@ -19,20 +19,36 @@ async function accountSearch(
 	viewer: string | null,
 	limit: number,
 	following = false,
-	offset = 0
+	offset = 0,
+	resolvedId: string | null = null
 ) {
+	const handle = q.replace(/^@/, ''),
+		parts = handle.split('@'),
+		localUsername = parts.length === 2 && isLocalAccountDomain(env, parts[1]) ? parts[0]! : null
 	return all<AccountRow>(
 		env,
-		`SELECT a.* FROM accounts a WHERE a.suspended=0 AND ${allowedAccountSQL()} AND (a.username LIKE ? ESCAPE '\\' OR a.display_name LIKE ? ESCAPE '\\' OR a.uri=?) AND NOT EXISTS(SELECT 1 FROM account_actions b WHERE b.kind='block' AND ((b.account_id=? AND b.target_id=a.id) OR (b.target_id=? AND b.account_id=a.id))) ${following ? "AND EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=? AND f.following_id=a.id AND f.state='accepted')" : ''} ORDER BY a.username=? DESC,a.username LIMIT ? OFFSET ?`,
+		`SELECT a.* FROM accounts a WHERE a.suspended=0 AND ${allowedAccountSQL()} AND (a.username LIKE ? ESCAPE '\\' OR a.display_name LIKE ? ESCAPE '\\' OR (a.username||'@'||a.domain) LIKE ? ESCAPE '\\' OR (a.domain='' AND a.username=?) OR a.uri=? OR a.url=? OR a.id=?) AND NOT EXISTS(SELECT 1 FROM account_actions b WHERE b.kind='block' AND ((b.account_id=? AND b.target_id=a.id) OR (b.target_id=? AND b.account_id=a.id))) ${following ? "AND EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=? AND f.following_id=a.id AND f.state='accepted')" : ''} ORDER BY a.id=? DESC,a.username=? DESC,a.username,a.id LIMIT ? OFFSET ?`,
+		like(handle),
 		like(q),
-		like(q),
+		like(handle),
+		localUsername,
 		q,
+		q,
+		resolvedId,
 		viewer,
 		viewer,
 		...(following ? [viewer] : []),
-		q,
+		resolvedId,
+		handle,
 		limit,
 		offset
+	)
+}
+function resolutionFailed(error: unknown) {
+	// Remote discovery is best effort. Keep cached search usable if a server is
+	// unavailable without recording the user's query or a remote response body.
+	console.warn(
+		JSON.stringify({ event: 'search_resolution_failed', type: error instanceof Error ? error.name : 'Error' })
 	)
 }
 search.get('/api/v1/accounts/lookup', async (c) => {
@@ -50,21 +66,35 @@ search.get('/api/v1/accounts/lookup', async (c) => {
 })
 search.get('/api/v1/accounts/search', async (c) => {
 	await authenticate(c, 'read:accounts')
-	const q = c.req.query('q') ?? ''
+	const q = (c.req.query('q') ?? '').trim()
 	if (!q || q.length > 500) throw new ApiError(422, 'Invalid search query')
-	if (c.req.query('resolve') === 'true' && /[@:/]/.test(q)) await resolveAccount(c.env, q).catch(() => null)
+	const resolved =
+		c.req.query('resolve') === 'true' && /[@:/]/.test(q)
+			? await resolveAccount(c.env, q).catch((error) => {
+					resolutionFailed(error)
+					return null
+				})
+			: null
 	return c.json(
 		await Promise.all(
-			(await accountSearch(c.env, q, c.get('account').id, pageLimit(c, 80), c.req.query('following') === 'true')).map(
-				(a) => accountJSON(c.env, a)
-			)
+			(
+				await accountSearch(
+					c.env,
+					q,
+					c.get('account').id,
+					pageLimit(c, 80),
+					c.req.query('following') === 'true',
+					0,
+					resolved?.id
+				)
+			).map((a) => accountJSON(c.env, a))
 		)
 	)
 })
 search.get('/api/v2/search', async (c) => {
 	await authenticate(c, 'read:search')
 	const viewer = c.get('account').id,
-		q = c.req.query('q') ?? '',
+		q = (c.req.query('q') ?? '').trim(),
 		type = c.req.query('type'),
 		limit = pageLimit(c, 40),
 		offset = Math.max(0, Math.min(10000, Number(c.req.query('offset') ?? 0)))
@@ -75,20 +105,28 @@ search.get('/api/v2/search', async (c) => {
 		(type && !['accounts', 'statuses', 'hashtags'].includes(type))
 	)
 		throw new ApiError(422, 'Invalid search')
-	if (c.req.query('resolve') === 'true' && /^(https:\/\/|@?\w+@)/.test(q)) {
-		const ctx = (await federation(c.env)).createContext(new URL(c.env.PUBLIC_ORIGIN), c.env)
-		const found = await ctx.lookupObject(q)
-		if (found && isActor(found)) await persistActor(ctx, found)
-		else if (found?.attributionId) {
-			const actor = await ctx.lookupObject(found.attributionId)
-			if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor))
+	let resolvedId: string | null = null
+	if (c.req.query('resolve') === 'true' && /^(https:\/\/|@?[^\s@]+@)/.test(q)) {
+		try {
+			if (type === 'accounts') resolvedId = (await resolveAccount(c.env, q)).id
+			else {
+				const ctx = (await federation(c.env)).createContext(new URL(c.env.PUBLIC_ORIGIN), c.env)
+				const found = await ctx.lookupObject(q)
+				if (found && isActor(found)) resolvedId = (await persistActor(ctx, found)).id
+				else if (found?.attributionId) {
+					const actor = await ctx.lookupObject(found.attributionId)
+					if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor))
+				}
+			}
+		} catch (error) {
+			resolutionFailed(error)
 		}
 	}
 	const accounts =
 			!type || type === 'accounts'
 				? await Promise.all(
-						(await accountSearch(c.env, q, viewer, limit, c.req.query('following') === 'true', offset)).map((a) =>
-							accountJSON(c.env, a)
+						(await accountSearch(c.env, q, viewer, limit, c.req.query('following') === 'true', offset, resolvedId)).map(
+							(a) => accountJSON(c.env, a)
 						)
 					)
 				: [],

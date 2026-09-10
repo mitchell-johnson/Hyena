@@ -76,6 +76,17 @@ export async function executeJob(env: Env, id: string) {
 		.bind(lease, now + 300_000, now, id, now, now)
 		.first<JobRow>()
 	if (!job) return
+	// A long Retry-After wakes at the delivery deadline only to expire the
+	// task. Do not send earlier than requested or hold later ordered work forever.
+	if (job.kind === 'federation.message' && now - (job.first_attempt_at ?? now) >= 7 * 86400000) {
+		await run(
+			env,
+			"UPDATE jobs SET state='dead',lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error='Remote delivery retry limit reached' WHERE id=? AND lease_token=?",
+			id,
+			lease
+		)
+		return
+	}
 	const raw = parsed<Record<string, unknown>>(job.payload, {}),
 		message = raw.message as { type?: string; activity?: Record<string, unknown> } | undefined
 	const order =
@@ -153,11 +164,15 @@ export async function executeJob(env: Env, id: string) {
 			const status = await env.DB.prepare('SELECT * FROM statuses WHERE id=?').bind(payload.statusId).first<StatusRow>()
 			if (status) await statusEvent(env, status)
 		} else if (job.kind === 'federation.message')
-			await federationMessage(env, {
-				message: payload.messageCipher
-					? await unseal<import('@fedify/fedify').Message>(env, payload.messageCipher)
-					: payload.message,
-			})
+			await federationMessage(
+				env,
+				{
+					message: payload.messageCipher
+						? await unseal<import('@fedify/fedify').Message>(env, payload.messageCipher)
+						: payload.message,
+				},
+				{ id, token: lease }
+			)
 		else if (job.kind === 'federation.extension') await receiveExtension(env, payload)
 		else if (job.kind === 'card.fetch' && payload.statusId) await fetchCard(env, payload.statusId)
 		else if (job.kind === 'federation.send') await sendStored(env, payload)
@@ -169,7 +184,7 @@ export async function executeJob(env: Env, id: string) {
 		else if (job.kind === 'email.send') await sendEmail(env, JSON.parse(job.payload))
 		else throw new ApiError(422, 'Invalid durable job payload')
 		await env.DB.prepare(
-			`UPDATE jobs SET state='done',completed_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL WHERE id=? AND lease_token=?`
+			`UPDATE jobs SET state='done',completed_at=?,lease_token=NULL,lease_until=NULL,dispatch_until=NULL,last_error=NULL WHERE id=? AND lease_token=?`
 		)
 			.bind(Date.now(), id, lease)
 			.run()

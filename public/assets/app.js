@@ -31,32 +31,42 @@ async function feed(path, append = false) {
 }
 async function notices() {
 	root.replaceChildren()
+	const items = document.createElement('section')
+	function newList() {
+		const list = document.createElement('div')
+		items.replaceChildren(list)
+		return list
+	}
 	links([
-		['All', () => noticeList()],
+		['All', () => noticeList(newList())],
 		[
 			'Filtered requests',
 			async () => {
-				root.replaceChildren()
-				for (const n of await api('/api/v1/notifications/requests')) {
+				const list = newList()
+				const rows = await api('/api/v1/notifications/requests')
+				for (const n of rows) {
 					const el = person(n.account)
 					el.append(
 						button('Accept notifications', async () => {
 							await post('/api/v1/notifications/requests/' + n.id + '/accept')
 							el.remove()
+							if (!list.children.length) empty(list, 'No requests remaining.')
 						}),
 						button('Dismiss', async () => {
 							await post('/api/v1/notifications/requests/' + n.id + '/dismiss')
 							el.remove()
+							if (!list.children.length) empty(list, 'No requests remaining.')
 						})
 					)
-					root.append(el)
+					list.append(el)
 				}
+				if (!rows.length) empty(list, 'No filtered notification requests.')
 			},
 		],
 		[
 			'Follow requests',
 			async () => {
-				root.replaceChildren()
+				const list = newList()
 				const rows = await api('/api/v1/follow_requests')
 				for (const a of rows) {
 					const el = person(a)
@@ -64,15 +74,17 @@ async function notices() {
 						button('Approve', async () => {
 							await post('/api/v1/follow_requests/' + a.id + '/authorize')
 							el.remove()
+							if (!list.children.length) empty(list, 'No requests remaining.')
 						}),
 						button('Reject', async () => {
 							await post('/api/v1/follow_requests/' + a.id + '/reject')
 							el.remove()
+							if (!list.children.length) empty(list, 'No requests remaining.')
 						})
 					)
-					root.append(el)
+					list.append(el)
 				}
-				if (!rows.length) empty(root)
+				if (!rows.length) empty(list, 'No follow requests.')
 			},
 		],
 		[
@@ -83,13 +95,10 @@ async function notices() {
 			},
 		],
 	])
-	await noticeList()
+	root.append(items)
+	await noticeList(newList())
 }
-async function noticeList() {
-	root.querySelector('#notice-items')?.remove()
-	const list = document.createElement('div')
-	list.id = 'notice-items'
-	root.append(list)
+async function noticeList(list) {
 	const rows = await api('/api/v1/notifications')
 	for (const n of rows) {
 		const el = document.createElement('article')
@@ -124,13 +133,14 @@ async function noticeList() {
 				async () => {
 					await post('/api/v1/notifications/' + n.id + '/dismiss')
 					el.remove()
+					if (!list.children.length) empty(list, 'No notifications.')
 				},
 				'quiet'
 			)
 		)
 		list.append(el)
 	}
-	if (!rows.length) empty(list)
+	if (!rows.length) empty(list, 'No notifications.')
 	if (rows[0]) await post('/api/v1/markers', { notifications: { last_read_id: rows[0].id } })
 }
 async function listManager() {
@@ -338,42 +348,57 @@ async function search() {
 }
 async function explore() {
 	root.replaceChildren()
+	const items = document.createElement('section')
+	function newList() {
+		const list = document.createElement('div')
+		items.replaceChildren(list)
+		return list
+	}
+	async function show(path, render, emptyText, list = newList()) {
+		const rows = await api(path),
+			page = state.next
+		for (const row of rows) list.append(render(row))
+		if (!list.children.length) empty(list, emptyText)
+		if (page) {
+			const loadMore = button('Load more', async () => {
+				await show(page, render, emptyText, list)
+				loadMore.remove()
+			})
+			list.append(loadMore)
+		}
+	}
+	const showPosts = () => show('/api/v1/trends/statuses', (s) => status(s, { compose }), 'No trending posts yet.')
 	links([
-		['Posts', () => feed('/api/v1/trends/statuses')],
-		[
-			'People',
-			async () => {
-				root.replaceChildren()
-				for (const a of await api('/api/v1/directory?order=active')) root.append(person(a))
-			},
-		],
+		['Posts', showPosts],
+		['People', () => show('/api/v1/directory?order=active', person, 'No people to show yet.')],
 		[
 			'Hashtags',
-			async () => {
-				root.replaceChildren()
-				for (const t of await api('/api/v1/trends/tags'))
-					root.append(
+			() =>
+				show(
+					'/api/v1/trends/tags',
+					(t) =>
 						button('#' + t.name, () => {
 							location.href = '/tags/' + encodeURIComponent(t.name)
-						})
-					)
-			},
+						}),
+					'No trending hashtags yet.'
+				),
 		],
 		[
 			'Links',
-			async () => {
-				root.replaceChildren()
-				for (const l of await api('/api/v1/trends/links')) {
-					const el = document.createElement('article')
-					el.innerHTML = `<a href="${esc(l.url)}" rel="noopener noreferrer">${esc(l.title)}</a><p>${esc(l.description)}</p>`
-					root.append(el)
-				}
-			},
+			() =>
+				show(
+					'/api/v1/trends/links',
+					(l) => {
+						const el = document.createElement('article')
+						el.innerHTML = `<a href="${esc(l.url)}" rel="noopener noreferrer">${esc(l.title)}</a><p>${esc(l.description)}</p>`
+						return el
+					},
+					'No trending links yet.'
+				),
 		],
 	])
-	const list = document.createElement('div')
-	for (const s of await api('/api/v1/trends/statuses')) list.append(status(s, { compose }))
-	root.append(list)
+	root.append(items)
+	await showPosts()
 }
 async function load() {
 	more.hidden = true

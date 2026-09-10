@@ -1,5 +1,5 @@
 import { state, api, post, esc, button, bind, message, dialog } from './api.js'
-import { person, status, empty } from './render.js'
+import { person, status, empty, accountRelationship, updateRelationship } from './render.js'
 export async function profileDetail(root, id, compose) {
 	const a = await api('/api/v1/accounts/' + encodeURIComponent(id))
 	root.replaceChildren(person(a))
@@ -54,33 +54,35 @@ export async function profileDetail(root, id, compose) {
 			button(
 				'Relationship options',
 				async () => {
-					const [r] = await api('/api/v1/accounts/relationships?id[]=' + id),
+					const r = await accountRelationship(id),
 						d = dialog(
 							'Relationship options',
 							`<form><label>Private note<textarea name="comment" maxlength="2000">${esc(r.note)}</textarea></label><label><input type="checkbox" name="notify" ${r.notifying ? 'checked' : ''}> Notify me about posts</label><label><input type="checkbox" name="reblogs" ${r.showing_reblogs ? 'checked' : ''}> Show boosts</label><label>Languages (comma separated, blank for all)<input name="languages" value="${esc((r.languages ?? []).join(','))}"></label><button>Save</button></form>`
 						)
 					bind(d.querySelector('form'), async (f) => {
-						await post('/api/v1/accounts/' + id + '/note', { comment: f.get('comment') })
-						if (r.following)
-							await post('/api/v1/accounts/' + id + '/follow', {
-								notify: f.has('notify'),
-								reblogs: f.has('reblogs'),
-								languages: f
-									.get('languages')
-									.split(',')
-									.map((x) => x.trim())
-									.filter(Boolean),
-							})
+						updateRelationship(await post('/api/v1/accounts/' + id + '/note', { comment: f.get('comment') }))
+						if (r.following || r.requested)
+							updateRelationship(
+								await post('/api/v1/accounts/' + id + '/follow', {
+									notify: f.has('notify'),
+									reblogs: f.has('reblogs'),
+									languages: f
+										.get('languages')
+										.split(',')
+										.map((x) => x.trim())
+										.filter(Boolean),
+								})
+							)
 						d.close()
 						message('Relationship updated.')
 					})
 					for (const [label, action] of [
 						[r.endorsed ? 'Remove recommendation' : 'Recommend account', r.endorsed ? 'unpin' : 'pin'],
-						['Remove follower', 'remove_from_followers'],
+						...(r.followed_by ? [['Remove follower', 'remove_from_followers']] : []),
 					])
 						d.append(
 							button(label, async () => {
-								await post('/api/v1/accounts/' + id + '/' + action)
+								updateRelationship(await post('/api/v1/accounts/' + id + '/' + action))
 								d.close()
 							})
 						)

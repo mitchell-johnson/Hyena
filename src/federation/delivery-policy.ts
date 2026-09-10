@@ -38,6 +38,21 @@ export async function currentRecipients(env: Env, activity: Record<string, unkno
 	for (const id of ids) {
 		const a = await one<AccountRow>(env, 'SELECT * FROM accounts WHERE id=? OR uri=?', id, id)
 		if (!a || a.disabled || a.suspended || (a.domain && (await domainPolicy(env, a.domain)).suspended)) continue
+		// A delayed Follow belongs to one particular request. An unfollow, or
+		// a later re-follow with a fresh activity ID, cancels that old intent.
+		if (
+			type === 'Follow' &&
+			(!actor ||
+				objectURI !== accountUri(env, a) ||
+				!(await one(
+					env,
+					'SELECT 1 FROM follows WHERE follower_id=? AND following_id=? AND activity_uri=?',
+					actor.id,
+					a.id,
+					uri(activity.id)
+				)))
+		)
+			continue
 		if (actor && !isRemoval && (await blocked(env, actor.id, a.id))) continue
 		if (
 			actor &&

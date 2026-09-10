@@ -2,44 +2,125 @@ import { state, esc, api, post, button, message, dialog, bind } from './api.js'
 export function empty(root, text = 'Nothing here yet.') {
 	root.innerHTML = `<p class="empty">${esc(text)}</p>`
 }
+// Account lists load their relationships together, rather than making one request per card.
+let pendingRelationships = new Map()
+export function accountRelationship(id) {
+	if (!pendingRelationships.has(id)) {
+		let resolve, reject
+		const promise = new Promise((done, fail) => {
+			resolve = done
+			reject = fail
+		})
+		pendingRelationships.set(id, { promise, resolve, reject })
+		if (pendingRelationships.size === 1)
+			queueMicrotask(async () => {
+				const pending = pendingRelationships
+				pendingRelationships = new Map()
+				const entries = [...pending]
+				for (let i = 0; i < entries.length; i += 100) {
+					const batch = entries.slice(i, i + 100)
+					try {
+						const rows = await api(
+							'/api/v1/accounts/relationships?' + new URLSearchParams(batch.map(([id]) => ['id[]', id]))
+						)
+						for (const [id, item] of batch) {
+							const row = rows.find((r) => r.id === id)
+							if (row) item.resolve(row)
+							else item.reject(new Error('Could not load account relationship'))
+						}
+					} catch (error) {
+						for (const [, item] of batch) item.reject(error)
+					}
+				}
+			})
+	}
+	return pendingRelationships.get(id).promise
+}
+export function updateRelationship(relationship) {
+	for (const card of document.querySelectorAll('.person'))
+		if (card.dataset.accountId === relationship.id)
+			card.dispatchEvent(new CustomEvent('relationshipchange', { detail: relationship }))
+}
 export function person(a) {
 	const el = document.createElement('article')
 	el.className = 'person'
+	el.dataset.accountId = a.id
 	el.innerHTML = `<header><img class="avatar" src="${esc(a.avatar)}" alt="" loading="lazy"><div class="byline"><a href="/accounts/${esc(a.id)}">${esc(a.display_name || a.username)}</a><small>@${esc(a.acct)}</small></div></header><div class="post-content">${a.note || ''}</div><p class="muted">${a.followers_count} followers · ${a.statuses_count} posts</p>`
 	if (state.account && state.account.id !== a.id) {
 		const actions = document.createElement('div')
 		actions.className = 'post-actions'
-		actions.append(
-			button('Follow', async (b) => {
-				const r = await post('/api/v1/accounts/' + a.id + '/follow')
-				b.textContent = r.requested ? 'Requested' : 'Following'
-			}),
-			button('Unfollow', async () => {
-				await post('/api/v1/accounts/' + a.id + '/unfollow')
-				message('Account unfollowed.')
-			}),
-			button('Mute', async () => {
-				await post('/api/v1/accounts/' + a.id + '/mute', { notifications: true })
-				message('Account muted.')
-			}),
-			button('Block', async () => {
-				await post('/api/v1/accounts/' + a.id + '/block')
-				el.remove()
-			}),
-			button('Add to collection', async () => {
-				const data = await api('/api/v1/accounts/' + state.account.id + '/collections'),
-					d = dialog(
-						'Add to a collection',
-						`<form><label>Collection <select name="id">${data.collections.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><button>Add account</button></form>`
+		const path = '/api/v1/accounts/' + encodeURIComponent(a.id)
+		function showActions(r) {
+			const follow = button(
+				r.blocking ? 'Blocked' : r.requested ? 'Requested' : r.following ? 'Following' : 'Follow',
+				async () => {
+					const remove = r.following || r.requested
+					const updated = await post(path + (remove ? '/unfollow' : '/follow'))
+					updateRelationship(updated)
+					message(
+						remove
+							? r.requested
+								? 'Follow request cancelled.'
+								: 'Account unfollowed.'
+							: updated.requested
+								? 'Follow request sent.'
+								: 'Account followed.'
 					)
-				bind(d.querySelector('form'), async (f) => {
-					await post('/api/v1/collections/' + f.get('id') + '/items', { account_id: a.id })
-					d.close()
-					message('Collection updated.')
+				},
+				r.following || r.requested ? 'active' : ''
+			)
+			follow.disabled = r.blocking || r.blocked_by || r.domain_blocking
+			follow.title = follow.disabled
+				? 'This account cannot be followed while blocked'
+				: r.requested
+					? 'Cancel follow request'
+					: r.following
+						? 'Unfollow account'
+						: 'Follow account'
+			follow.setAttribute(
+				'aria-label',
+				follow.textContent +
+					' @' +
+					a.acct +
+					(r.requested ? ', cancel follow request' : r.following ? ', unfollow account' : '')
+			)
+			follow.setAttribute('aria-pressed', String(r.following || r.requested))
+			actions.replaceChildren(
+				follow,
+				button(r.muting ? 'Unmute' : 'Mute', async () => {
+					updateRelationship(await post(path + (r.muting ? '/unmute' : '/mute'), { notifications: true }))
+					message(r.muting ? 'Account unmuted.' : 'Account muted.')
+				}),
+				button(r.blocking ? 'Unblock' : 'Block', async () => {
+					updateRelationship(await post(path + (r.blocking ? '/unblock' : '/block')))
+					message(r.blocking ? 'Account unblocked.' : 'Account blocked.')
+				}),
+				button('Add to collection', async () => {
+					const data = await api('/api/v1/accounts/' + state.account.id + '/collections'),
+						d = dialog(
+							'Add to a collection',
+							`<form><label>Collection <select name="id">${data.collections.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><button>Add account</button></form>`
+						)
+					bind(d.querySelector('form'), async (f) => {
+						await post('/api/v1/collections/' + f.get('id') + '/items', { account_id: a.id })
+						d.close()
+						message('Collection updated.')
+					})
 				})
-			})
-		)
+			)
+		}
+		async function loadActions() {
+			actions.textContent = 'Loading account actions…'
+			try {
+				showActions(await accountRelationship(a.id))
+			} catch (error) {
+				actions.replaceChildren(button('Retry account actions', loadActions))
+				message(error.message, true)
+			}
+		}
+		el.addEventListener('relationshipchange', (event) => showActions(event.detail))
 		el.append(actions)
+		void loadActions()
 	}
 	return el
 }

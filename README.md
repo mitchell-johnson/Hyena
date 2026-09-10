@@ -20,6 +20,8 @@ Open your server's website and choose **Sign in**. Registration is closed by def
 
 After signing in, update your profile in **Settings**, search for someone using their full address (such as `@someone@their-server.example`), and follow them. Their new posts will appear in **Home**.
 
+The follow button shows **Requested** while the other server processes the request or the person approves it, then **Following** once accepted. Select it again to cancel or unfollow. If your profile requires follower approval, incoming requests are under **Notifications → Follow requests**.
+
 ### Connect a Mastodon app
 
 1. In the app, choose to sign in to an existing account.
