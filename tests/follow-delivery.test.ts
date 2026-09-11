@@ -33,6 +33,7 @@ async function pendingFollow() {
 			documentLoaderFactory: () => async (url: string) => ({ contextUrl: null, documentUrl: url, document }),
 		}),
 		ctx = f.createContext(new URL(env.PUBLIC_ORIGIN), env) as InboxContext<Env>
+	vi.spyOn(ctx, 'getDocumentLoader').mockResolvedValue(ctx.documentLoader)
 	await env.DB.prepare('INSERT INTO accounts(id,username,domain,uri,inbox,created_at) VALUES(?,?,?,?,?,?)')
 		.bind('remote-bob', 'bob', 'remote.example', remote.id!.href, remote.inboxId!.href, new Date().toISOString())
 		.run()

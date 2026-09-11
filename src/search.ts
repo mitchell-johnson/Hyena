@@ -12,7 +12,8 @@ import { persistActor, persistStatus } from './federation/receive'
 import { isActor } from '@fedify/vocab'
 import type { AppEnv, AccountRow, StatusRow } from './types'
 export const search = new Hono<AppEnv>()
-const like = (s: string) => '%' + s.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_') + '%'
+// D1 limits LIKE/GLOB patterns to 50 bytes. Literal substring search accepts
+// full handles, URLs and Unicode text while preserving ASCII case folding.
 async function accountSearch(
 	env: Parameters<typeof all>[0],
 	q: string,
@@ -27,10 +28,10 @@ async function accountSearch(
 		localUsername = parts.length === 2 && isLocalAccountDomain(env, parts[1]) ? parts[0]! : null
 	return all<AccountRow>(
 		env,
-		`SELECT a.* FROM accounts a WHERE a.suspended=0 AND ${allowedAccountSQL()} AND (a.username LIKE ? ESCAPE '\\' OR a.display_name LIKE ? ESCAPE '\\' OR (a.username||'@'||a.domain) LIKE ? ESCAPE '\\' OR (a.domain='' AND a.username=?) OR a.uri=? OR a.url=? OR a.id=?) AND NOT EXISTS(SELECT 1 FROM account_actions b WHERE b.kind='block' AND ((b.account_id=? AND b.target_id=a.id) OR (b.target_id=? AND b.account_id=a.id))) ${following ? "AND EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=? AND f.following_id=a.id AND f.state='accepted')" : ''} ORDER BY a.id=? DESC,a.username=? DESC,a.username,a.id LIMIT ? OFFSET ?`,
-		like(handle),
-		like(q),
-		like(handle),
+		`SELECT a.* FROM accounts a WHERE a.suspended=0 AND ${allowedAccountSQL()} AND (instr(lower(a.username),lower(?))>0 OR instr(lower(a.display_name),lower(?))>0 OR instr(lower(a.username||'@'||a.domain),lower(?))>0 OR (a.domain='' AND a.username=?) OR a.uri=? OR a.url=? OR a.id=?) AND NOT EXISTS(SELECT 1 FROM account_actions b WHERE b.kind='block' AND ((b.account_id=? AND b.target_id=a.id) OR (b.target_id=? AND b.account_id=a.id))) ${following ? "AND EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=? AND f.following_id=a.id AND f.state='accepted')" : ''} ORDER BY a.id=? DESC,a.username=? DESC,a.username,a.id LIMIT ? OFFSET ?`,
+		handle,
+		q,
+		handle,
 		localUsername,
 		q,
 		q,
@@ -70,7 +71,7 @@ search.get('/api/v1/accounts/search', async (c) => {
 	if (!q || q.length > 500) throw new ApiError(422, 'Invalid search query')
 	const resolved =
 		c.req.query('resolve') === 'true' && /[@:/]/.test(q)
-			? await resolveAccount(c.env, q).catch((error) => {
+			? await resolveAccount(c.env, q, undefined, c.get('account').username).catch((error) => {
 					resolutionFailed(error)
 					return null
 				})
@@ -108,14 +109,15 @@ search.get('/api/v2/search', async (c) => {
 	let resolvedId: string | null = null
 	if (c.req.query('resolve') === 'true' && /^(https:\/\/|@?[^\s@]+@)/.test(q)) {
 		try {
-			if (type === 'accounts') resolvedId = (await resolveAccount(c.env, q)).id
+			if (type === 'accounts') resolvedId = (await resolveAccount(c.env, q, undefined, c.get('account').username)).id
 			else {
-				const ctx = (await federation(c.env)).createContext(new URL(c.env.PUBLIC_ORIGIN), c.env)
-				const found = await ctx.lookupObject(q)
-				if (found && isActor(found)) resolvedId = (await persistActor(ctx, found)).id
+				const ctx = (await federation(c.env)).createContext(new URL(c.env.PUBLIC_ORIGIN), c.env),
+					documentLoader = await ctx.getDocumentLoader({ identifier: c.get('account').username }),
+					found = await ctx.lookupObject(q, { documentLoader })
+				if (found && isActor(found)) resolvedId = (await persistActor(ctx, found, documentLoader)).id
 				else if (found?.attributionId) {
-					const actor = await ctx.lookupObject(found.attributionId)
-					if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor))
+					const actor = await ctx.lookupObject(found.attributionId, { documentLoader })
+					if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor, documentLoader))
 				}
 			}
 		} catch (error) {
@@ -136,9 +138,9 @@ search.get('/api/v2/search', async (c) => {
 			!type || type === 'statuses'
 				? await all<StatusRow>(
 						c.env,
-						`SELECT * FROM statuses WHERE ${p.sql} AND (text LIKE ? ESCAPE '\\' OR uri=? OR url=?) AND (account_id=? OR EXISTS(SELECT 1 FROM interactions i WHERE i.status_id=statuses.id AND i.account_id=?) OR EXISTS(SELECT 1 FROM status_recipients r WHERE r.status_id=statuses.id AND r.account_id=?) OR EXISTS(SELECT 1 FROM accounts a WHERE a.id=statuses.account_id AND a.indexable=1)) ${account ? 'AND account_id=?' : ''} ORDER BY sequence DESC LIMIT ? OFFSET ?`,
+						`SELECT * FROM statuses WHERE ${p.sql} AND (instr(lower(text),lower(?))>0 OR uri=? OR url=?) AND (account_id=? OR EXISTS(SELECT 1 FROM interactions i WHERE i.status_id=statuses.id AND i.account_id=?) OR EXISTS(SELECT 1 FROM status_recipients r WHERE r.status_id=statuses.id AND r.account_id=?) OR EXISTS(SELECT 1 FROM accounts a WHERE a.id=statuses.account_id AND a.indexable=1)) ${account ? 'AND account_id=?' : ''} ORDER BY sequence DESC LIMIT ? OFFSET ?`,
 						...p.binds,
-						like(q),
+						q,
 						q,
 						q,
 						viewer,
@@ -155,8 +157,8 @@ search.get('/api/v2/search', async (c) => {
 					(
 						await all<{ name: string }>(
 							c.env,
-							"SELECT name FROM tags WHERE name LIKE ? ESCAPE '\\' AND usable=1 ORDER BY name LIMIT ? OFFSET ?",
-							like(q.replace(/^#/, '')),
+							'SELECT name FROM tags WHERE instr(lower(name),lower(?))>0 AND usable=1 ORDER BY name LIMIT ? OFFSET ?',
+							q.replace(/^#/, ''),
 							limit,
 							offset
 						)

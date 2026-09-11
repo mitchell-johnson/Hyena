@@ -70,7 +70,11 @@ export function safeUrl(value: unknown): string | null {
 		return null
 	}
 }
-export async function persistActor(ctx: Context<Env>, actor: Actor): Promise<AccountRow> {
+export async function persistActor(
+	ctx: Context<Env>,
+	actor: Actor,
+	documentLoader?: Context<Env>['documentLoader']
+): Promise<AccountRow> {
 	if (!actor.id || !actor.preferredUsername || !actor.inboxId) throw new ApiError(422, 'Incomplete remote actor')
 	const uri = actor.id.href,
 		domain = actor.id.hostname
@@ -87,10 +91,13 @@ export async function persistActor(ctx: Context<Env>, actor: Actor): Promise<Acc
 	const existing = await one<AccountRow>(ctx.data, 'SELECT * FROM accounts WHERE uri=?', uri),
 		id = existing?.id ?? (await nextId(ctx.data.DB)),
 		json = (await actor.toJsonLd()) as Record<string, unknown>
-	const icon = await actor.getIcon(ctx),
-		image = await actor.getImage(ctx),
+	const loaders = documentLoader
+			? { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider }
+			: ctx,
+		icon = await actor.getIcon(loaders),
+		image = await actor.getImage(loaders),
 		attachments = []
-	for await (const field of actor.getAttachments(ctx)) {
+	for await (const field of actor.getAttachments(loaders)) {
 		const f = (await field.toJsonLd()) as Record<string, unknown>
 		if (f.type === 'PropertyValue' && attachments.length < 4)
 			attachments.push({ name: text(f.name).slice(0, 255), value: cleanHtml(text(f.value)), verified_at: null })
@@ -401,14 +408,31 @@ export async function persistStatus(
 	return (await one<StatusRow>(ctx.data, 'SELECT * FROM statuses WHERE id=?', id))!
 }
 
+async function inboxActorDocumentLoader(ctx: InboxContext<Env>, actorId: URL) {
+	// Secure-mode servers require signed actor reads. Use this inbox's active
+	// recipient, or an active local follower for activities in the shared inbox.
+	const recipient = ctx.recipient ?? null,
+		local = await one<{ username: string }>(
+			ctx.data,
+			`SELECT a.username FROM accounts a WHERE a.domain='' AND a.disabled=0 AND a.suspended=0 AND a.approved=1 AND (a.email IS NULL OR a.email_confirmed=1) AND (a.username=? OR EXISTS(SELECT 1 FROM follows f JOIN accounts remote ON remote.id=f.following_id WHERE f.follower_id=a.id AND f.state IN ('pending','accepted') AND remote.uri=?)) ORDER BY CASE WHEN a.username=? THEN 0 ELSE 1 END,a.id LIMIT 1`,
+			recipient,
+			actorId.href,
+			recipient
+		)
+	return local ? ctx.getDocumentLoader({ identifier: local.username }) : undefined
+}
+
 export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 	if (!activity.id || !activity.actorId || activity.id.origin !== activity.actorId.origin)
 		throw new ApiError(422, 'An activity needs a stable ID and actor')
 	if (await one(ctx.data, 'SELECT id FROM federation_inbox WHERE id=?', activity.id.href)) return
-	const remote = await activity.getActor(ctx)
+	const documentLoader = await inboxActorDocumentLoader(ctx, activity.actorId),
+		remote = await activity.getActor(
+			documentLoader ? { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider } : ctx
+		)
 	if (!remote || !isActor(remote) || remote.id?.href !== activity.actorId.href)
 		throw new ApiError(422, 'Invalid activity actor')
-	const actor = await persistActor(ctx, remote),
+	const actor = await persistActor(ctx, remote, documentLoader),
 		env = ctx.data,
 		serialized = (await activity.toJsonLd()) as Record<string, unknown>
 	if (await consentActivity(ctx, serialized, actor)) {

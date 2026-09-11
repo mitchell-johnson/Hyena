@@ -39,6 +39,7 @@ async function pendingFollow() {
 			documentLoaderFactory: () => loader,
 		}),
 		ctx = f.createContext(new URL(env.PUBLIC_ORIGIN), env) as InboxContext<Env>
+	vi.spyOn(ctx, 'getDocumentLoader').mockResolvedValue(ctx.documentLoader)
 	await run(
 		env,
 		'INSERT INTO accounts(id,username,domain,uri,inbox,created_at) VALUES(?,?,?,?,?,?)',

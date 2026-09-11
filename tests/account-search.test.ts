@@ -113,14 +113,15 @@ it('returns a newly resolved actor in general search even when WebFinger uses a 
 			preferredUsername: 'canonical',
 			inbox: new URL('https://actor.example/inbox'),
 		}),
-		lookupObject = vi.fn().mockResolvedValue(actor)
+		lookupObject = vi.fn().mockResolvedValue(actor),
+		documentLoader = vi.fn()
 	vi.spyOn(federationModule, 'federation').mockResolvedValue({
-		createContext: () => ({ data: env, lookupObject }),
+		createContext: () => ({ data: env, lookupObject, getDocumentLoader: async () => documentLoader }),
 	} as never)
 	const result = await accounts('/api/v2/search', viewer.token, '@alias@handles.example', '&resolve=true')
 	expect(result).toHaveLength(1)
 	expect(result[0]).toMatchObject({ username: 'canonical', acct: 'canonical@actor.example' })
-	expect(lookupObject).toHaveBeenCalledWith('@alias@handles.example')
+	expect(lookupObject).toHaveBeenCalledWith('@alias@handles.example', { documentLoader })
 })
 
 it('preserves cached search results when remote lookup fails and avoids logging private search details', async () => {
@@ -129,6 +130,7 @@ it('preserves cached search results when remote lookup fails and avoids logging 
 		warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
 	vi.spyOn(federationModule, 'federation').mockResolvedValue({
 		createContext: () => ({
+			getDocumentLoader: async () => vi.fn(),
 			lookupObject: async () => {
 				throw new TypeError('Upstream body contains private data')
 			},
