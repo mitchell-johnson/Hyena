@@ -14,6 +14,7 @@ import { fetchCard } from './community'
 import { processImport, processExport } from './lifecycle'
 import { followHistoryReadiness, processFollowHistory, type FollowHistoryPayload } from './federation/history'
 import type { FollowHistoryGuard } from './federation/history-types'
+import { processFollowBackfill, type FollowBackfillPayload } from './federation/backfill'
 
 interface JobErrorDiagnostic {
 	type: string
@@ -181,7 +182,9 @@ export async function executeJob(env: Env, id: string) {
 		]).catch(() => {})
 	}, 60000)
 	try {
-		if (job.kind === 'federation.history') {
+		if (job.kind === 'federation.backfill') {
+			await processFollowBackfill(env, JSON.parse(job.payload) as FollowBackfillPayload)
+		} else if (job.kind === 'federation.history') {
 			const readiness = await followHistoryReadiness(env, JSON.parse(job.payload) as FollowHistoryPayload)
 			if (readiness === 'wait') {
 				await run(
@@ -325,7 +328,9 @@ export async function sweep(env: Env) {
 			'DELETE FROM oauth_codes WHERE code_hash IN (SELECT code_hash FROM oauth_codes WHERE expires_at < ? LIMIT 100)'
 		).bind(now - 86_400_000),
 		env.DB.prepare(
-			`DELETE FROM jobs WHERE id IN (SELECT id FROM jobs WHERE state='done' AND completed_at < ? LIMIT 100)`
+			// Keep a completed backfill as the receipt for its current follow, so
+			// opening Home does not fetch the same history every seven days.
+			`DELETE FROM jobs WHERE id IN (SELECT id FROM jobs WHERE state='done' AND completed_at < ? AND (kind<>'federation.backfill' OR NOT EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=json_extract(jobs.payload,'$.followerId') AND f.following_id=json_extract(jobs.payload,'$.followingId') AND f.activity_uri=json_extract(jobs.payload,'$.followUri') AND f.state='accepted')) LIMIT 100)`
 		).bind(now - 7 * 86_400_000),
 	])
 	await env.DB.batch(

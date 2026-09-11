@@ -117,7 +117,8 @@ search.get('/api/v2/search', async (c) => {
 				if (found && isActor(found)) resolvedId = (await persistActor(ctx, found, documentLoader)).id
 				else if (found?.attributionId) {
 					const actor = await ctx.lookupObject(found.attributionId, { documentLoader })
-					if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor, documentLoader))
+					if (actor && isActor(actor))
+						await persistStatus(ctx, found, await persistActor(ctx, actor, documentLoader), 0, { documentLoader })
 				}
 			}
 		} catch (error) {

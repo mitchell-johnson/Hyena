@@ -29,6 +29,7 @@ import { ApiError } from '../http'
 import { digest } from '../auth/crypto'
 import { outboundStatement } from './outbox'
 import { followHistoryStatement } from './history'
+import { followBackfillStatement } from './backfill'
 import { notificationStatements } from '../notifications'
 import { migrateLocalFollowers } from '../lifecycle'
 import { domainPolicy } from '../moderation-policy'
@@ -146,8 +147,12 @@ export async function persistStatus(
 	ctx: Context<Env>,
 	object: ASObject,
 	actor: AccountRow,
-	depth = 0
+	depth = 0,
+	options: { quiet?: boolean; documentLoader?: Context<Env>['documentLoader']; id?: string } = {}
 ): Promise<StatusRow | null> {
+	const loaders = options.documentLoader
+		? { documentLoader: options.documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider }
+		: ctx
 	if (!(object instanceof Note) && !(object instanceof Question)) throw new ApiError(422, 'Unsupported status object')
 	if (!object.id || object.attributionId?.href !== accountUri(ctx.data, actor))
 		throw new ApiError(422, 'Object attribution does not match its actor')
@@ -173,7 +178,7 @@ export async function persistStatus(
 			: actor.followers_url && addressed.includes(actor.followers_url)
 				? 'private'
 				: 'direct'
-	const id = existing?.id ?? (await nextId(ctx.data.DB)),
+	const id = existing?.id ?? options.id ?? (await nextId(ctx.data.DB)),
 		content = cleanHtml(String(object.content ?? '')),
 		plain = sanitizeHtml(content, { allowedTags: [], allowedAttributes: {} }),
 		recipients: AccountRow[] = [],
@@ -190,7 +195,7 @@ export async function persistStatus(
 			))
 		if (a && !recipients.some((r) => r.id === a.id)) recipients.push(a)
 	}
-	for await (const tag of object.getTags(ctx)) {
+	for await (const tag of object.getTags(loaders)) {
 		const j = (await tag.toJsonLd()) as Record<string, unknown>
 		if (j.type === 'Hashtag') {
 			const name = text(j.name).replace(/^#/, '').toLocaleLowerCase()
@@ -201,10 +206,14 @@ export async function persistStatus(
 		? await one<StatusRow>(ctx.data, 'SELECT * FROM statuses WHERE uri=?', object.replyTargetId.href)
 		: null
 	if (!parent && object.replyTargetId && depth < 2) {
-		const p = await ctx.lookupObject(object.replyTargetId)
+		const p = await ctx.lookupObject(object.replyTargetId, options)
 		if (p?.attributionId) {
-			const author = await ctx.lookupObject(p.attributionId)
-			if (author && isActor(author)) parent = await persistStatus(ctx, p, await persistActor(ctx, author), depth + 1)
+			const author = await ctx.lookupObject(p.attributionId, options)
+			if (author && isActor(author))
+				parent = await persistStatus(ctx, p, await persistActor(ctx, author, options.documentLoader), depth + 1, {
+					...options,
+					id: undefined,
+				})
 		}
 	}
 	const raw = (await object.toJsonLd()) as Record<string, unknown>,
@@ -212,10 +221,14 @@ export async function persistStatus(
 		authorization = uriOf(raw.quoteAuthorization)
 	let quote = quoteURI ? await localStatusByUri(ctx.data, quoteURI) : null
 	if (!quote && quoteURI && depth < 2) {
-		const q = await ctx.lookupObject(quoteURI)
+		const q = await ctx.lookupObject(quoteURI, options)
 		if (q?.attributionId) {
-			const a = await ctx.lookupObject(q.attributionId)
-			if (a && isActor(a)) quote = await persistStatus(ctx, q, await persistActor(ctx, a), depth + 1)
+			const a = await ctx.lookupObject(q.attributionId, options)
+			if (a && isActor(a))
+				quote = await persistStatus(ctx, q, await persistActor(ctx, a, options.documentLoader), depth + 1, {
+					...options,
+					id: undefined,
+				})
 		}
 	}
 	let quoteState = quote ? 'pending' : null
@@ -231,7 +244,7 @@ export async function persistStatus(
 			)
 			if (proof) quoteState = 'accepted'
 		} else if (safeUrl(authorization) && new URL(authorization).origin === new URL(accountUri(ctx.data, qa)).origin) {
-			const proof = (await ctx.documentLoader(authorization)).document as Record<string, unknown>
+			const proof = (await loaders.documentLoader(authorization)).document as Record<string, unknown>
 			if (
 				proof.type === 'QuoteAuthorization' &&
 				uriOf(proof.interactionTarget) === quoteURI &&
@@ -299,7 +312,7 @@ export async function persistStatus(
 	const remoteFiles = []
 	const rejectMedia = actor.domain && (await domainPolicy(ctx.data, actor.domain)).rejectMedia
 	let position = 0
-	for await (const attachment of object.getAttachments(ctx)) {
+	for await (const attachment of object.getAttachments(loaders)) {
 		if (rejectMedia || position >= 4) break
 		const j = (await attachment.toJsonLd()) as Record<string, unknown>,
 			url = safeUrl(uriOf(j.url)),
@@ -367,39 +380,49 @@ export async function persistStatus(
 		)
 	)
 	if (object instanceof Question) {
-		const options: { name: string; votes: number }[] = []
-		for await (const choice of object.getExclusiveOptions(ctx))
-			options.push({ name: String(choice.name ?? ''), votes: Number((await choice.getReplies(ctx))?.totalItems ?? 0) })
+		const pollOptions: { name: string; votes: number }[] = []
+		for await (const choice of object.getExclusiveOptions(loaders))
+			pollOptions.push({
+				name: String(choice.name ?? ''),
+				votes: Number((await choice.getReplies(loaders))?.totalItems ?? 0),
+			})
 		let multiple = false
-		if (!options.length) {
+		if (!pollOptions.length) {
 			multiple = true
-			for await (const choice of object.getInclusiveOptions(ctx))
-				options.push({
+			for await (const choice of object.getInclusiveOptions(loaders))
+				pollOptions.push({
 					name: String(choice.name ?? ''),
-					votes: Number((await choice.getReplies(ctx))?.totalItems ?? 0),
+					votes: Number((await choice.getReplies(loaders))?.totalItems ?? 0),
 				})
 		}
-		if (options.length >= 2)
+		if (pollOptions.length >= 2) {
+			const importedAt = now(),
+				expiresAt = object.endTime?.toString() ?? importedAt
 			statements.push(
 				ctx.data.DB.prepare(
-					`INSERT INTO polls(id,status_id,multiple,expires_at,options,remote_votes) VALUES(?,?,?,?,?,?) ON CONFLICT(status_id) DO UPDATE SET expires_at=excluded.expires_at,options=excluded.options,remote_votes=excluded.remote_votes`
+					// Already-closed history must not generate a delayed live event in
+					// the expiry sweep. Preserve an existing poll's notification state.
+					`INSERT INTO polls(id,status_id,multiple,expires_at,options,remote_votes,notified_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(status_id) DO UPDATE SET expires_at=excluded.expires_at,options=excluded.options,remote_votes=excluded.remote_votes`
 				).bind(
 					id,
 					id,
 					+multiple,
-					object.endTime?.toString() ?? now(),
-					JSON.stringify(options.map((o) => o.name)),
-					JSON.stringify(options.map((o) => o.votes))
+					expiresAt,
+					JSON.stringify(pollOptions.map((o) => o.name)),
+					JSON.stringify(pollOptions.map((o) => o.votes)),
+					options.quiet && Date.parse(expiresAt) <= Date.parse(importedAt) ? importedAt : null
 				)
 			)
+		}
 	}
-	statements.push(
-		ctx.data.DB.prepare(
-			`INSERT OR IGNORE INTO jobs(id,kind,payload,available_at,created_at) VALUES(?,'status.event',?,?,?)`
-		).bind(`status:${id}:${revision}`, JSON.stringify({ statusId: id }), Date.now(), Date.now())
-	)
+	if (!options.quiet)
+		statements.push(
+			ctx.data.DB.prepare(
+				`INSERT OR IGNORE INTO jobs(id,kind,payload,available_at,created_at) VALUES(?,'status.event',?,?,?)`
+			).bind(`status:${id}:${revision}`, JSON.stringify({ statusId: id }), Date.now(), Date.now())
+		)
 	await ctx.data.DB.batch(statements)
-	if (!existing) {
+	if (!existing && !options.quiet) {
 		for (const a of recipients) {
 			const ns = await notificationStatements(ctx.data, a.id, actor.id, 'mention', id, 'mention:' + id + ':' + a.id)
 			if (ns.length) await ctx.data.DB.batch(ns)
@@ -427,9 +450,10 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 		throw new ApiError(422, 'An activity needs a stable ID and actor')
 	if (await one(ctx.data, 'SELECT id FROM federation_inbox WHERE id=?', activity.id.href)) return
 	const documentLoader = await inboxActorDocumentLoader(ctx, activity.actorId),
-		remote = await activity.getActor(
-			documentLoader ? { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider } : ctx
-		)
+		loaders = documentLoader
+			? { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider }
+			: ctx,
+		remote = await activity.getActor(loaders)
 	if (!remote || !isActor(remote) || remote.id?.href !== activity.actorId.href)
 		throw new ApiError(422, 'Invalid activity actor')
 	const actor = await persistActor(ctx, remote, documentLoader),
@@ -502,20 +526,38 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 		// Mastodon can reference the original Follow by URI instead of embedding
 		// it. Our ledger identifies the exact request and its intended recipient;
 		// dereferencing that URI is unnecessary and may not be supported.
-		if (activity.objectId)
-			await run(
+		if (activity.objectId) {
+			const follow = await one<{ follower_id: string }>(
 				env,
-				`${activity instanceof Accept ? "UPDATE follows SET state='accepted'" : 'DELETE FROM follows'} WHERE activity_uri=? AND following_id=? AND EXISTS(SELECT 1 FROM accounts a WHERE a.id=follows.follower_id AND a.domain='')`,
+				"SELECT f.follower_id FROM follows f JOIN accounts a ON a.id=f.follower_id WHERE f.activity_uri=? AND f.following_id=? AND a.domain=''",
 				activity.objectId.href,
 				actor.id
 			)
+			if (follow) {
+				const statements = [
+					env.DB.prepare(
+						`${activity instanceof Accept ? "UPDATE follows SET state='accepted'" : 'DELETE FROM follows'} WHERE activity_uri=? AND following_id=? AND follower_id=?`
+					).bind(activity.objectId.href, actor.id, follow.follower_id),
+				]
+				if (activity instanceof Accept)
+					statements.push(
+						await followBackfillStatement(env, {
+							followerId: follow.follower_id,
+							followingId: actor.id,
+							followUri: activity.objectId.href,
+						})
+					)
+				await env.DB.batch(statements)
+			}
+		}
 	} else if (activity instanceof Create || activity instanceof Update) {
-		const obj = await activity.getObject(ctx)
+		const obj = await activity.getObject(loaders)
 		if (obj && isActor(obj)) {
 			if (obj.id?.href !== remote.id?.href) throw new ApiError(422, 'Actor update ownership mismatch')
-			await persistActor(ctx, obj)
+			await persistActor(ctx, obj, documentLoader)
 		} else if (obj) {
-			if (!(await receiveVote(ctx, obj, actor, activity.id.href))) await persistStatus(ctx, obj, actor)
+			if (!(await receiveVote(ctx, obj, actor, activity.id.href)))
+				await persistStatus(ctx, obj, actor, 0, { documentLoader })
 		}
 	} else if (activity instanceof Delete) {
 		const uri = activity.objectId?.href
@@ -565,10 +607,11 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 	} else if (activity instanceof Announce) {
 		let s = activity.objectId ? await localStatusByUri(env, activity.objectId.href) : null
 		if (!s) {
-			const obj = await activity.getObject(ctx)
+			const obj = await activity.getObject(loaders)
 			if (obj?.attributionId) {
-				const author = await ctx.lookupObject(obj.attributionId)
-				if (author && isActor(author)) s = await persistStatus(ctx, obj, await persistActor(ctx, author))
+				const author = await ctx.lookupObject(obj.attributionId, { documentLoader })
+				if (author && isActor(author))
+					s = await persistStatus(ctx, obj, await persistActor(ctx, author, documentLoader), 0, { documentLoader })
 			}
 		}
 		if (s && ['public', 'unlisted'].includes(s.visibility)) {
@@ -581,7 +624,7 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 			])
 		}
 	} else if (activity instanceof Undo) {
-		const obj = await activity.getObject(ctx)
+		const obj = await activity.getObject(loaders)
 		if (!(obj instanceof Activity) || obj.actorId?.href !== activity.actorId.href)
 			throw new ApiError(422, 'Undo ownership mismatch')
 		if (obj instanceof Follow)
@@ -689,8 +732,9 @@ export async function receive(ctx: InboxContext<Env>, activity: Activity) {
 			throw new ApiError(422, 'Featured collection ownership mismatch')
 		let s = activity.objectId ? await localStatusByUri(env, activity.objectId.href) : null
 		if (!s && activity instanceof Add) {
-			const obj = await activity.getObject(ctx)
-			if (obj?.attributionId?.href === accountUri(env, actor)) s = await persistStatus(ctx, obj, actor)
+			const obj = await activity.getObject(loaders)
+			if (obj?.attributionId?.href === accountUri(env, actor))
+				s = await persistStatus(ctx, obj, actor, 0, { documentLoader })
 		}
 		if (s && s.account_id === actor.id && ['public', 'unlisted'].includes(s.visibility)) {
 			if (activity instanceof Add)
