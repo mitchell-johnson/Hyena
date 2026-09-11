@@ -80,6 +80,12 @@ async function historicalId(env: Env, published: number) {
 }
 
 export async function processFollowBackfill(env: Env, follow: FollowBackfillPayload) {
+	const deadline = Date.now() + 120000,
+		attemptSignal = AbortSignal.timeout(120000)
+	const checkDeadline = () => {
+		attemptSignal.throwIfAborted()
+		if (Date.now() >= deadline) throw new DOMException('Follow history attempt timed out', 'TimeoutError')
+	}
 	if (!follow || !follow.followerId || !follow.followingId || !follow.followUri || !(await allowed(env, follow))) return
 	const follower = await accountById(env, follow.followerId),
 		remote = await accountById(env, follow.followingId),
@@ -100,15 +106,30 @@ export async function processFollowBackfill(env: Env, follow: FollowBackfillPayl
 	// outbox traversal may be read. In particular, historical replies and quotes
 	// must not recursively discover third-party accounts or conversations.
 	const documentLoader: Context<Env>['documentLoader'] = async (url, options) => {
+		checkDeadline()
 		if (!permitted.has(url) || ++requests > 85) throw new ApiError(422, 'Outside the follow history selection')
 		if (!(await allowed(env, follow))) throw new ApiError(422, 'Follow is no longer active')
-		const result = await signedLoader(url, options)
+		const signal = AbortSignal.any([
+				attemptSignal,
+				AbortSignal.timeout(20000),
+				...(options?.signal ? [options.signal] : []),
+			]),
+			result = await signedLoader(url, { ...options, signal })
+		signal.throwIfAborted()
+		checkDeadline()
 		if (!safeUrl(result.documentUrl) || new URL(result.documentUrl).origin !== origin)
 			throw new ApiError(422, 'Cross-origin history response')
 		return result
 	}
-	const loaders = { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider },
-		actor = await ctx.lookupObject(actorUri, { documentLoader })
+	const loaders = { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider }
+	const readObject = async (url: string) => {
+		// lookupObject falls back to WebFinger after a failed document fetch and
+		// can hide transport failures. These are already canonical actor/outbox
+		// URLs; preserve their timeout so the durable job retries the same intent.
+		const result = await documentLoader(url)
+		return ASObject.fromJsonLd(result.document, { ...loaders, baseUrl: new URL(result.documentUrl) })
+	}
+	const actor = await readObject(actorUri)
 	if (!actor || !isActor(actor) || actor.id?.href !== actorUri || !permit(actor.outboxId)) return
 	const outbox = await actor.getOutbox(loaders)
 	if (!outbox || (outbox.id && outbox.id.href !== actor.outboxId!.href)) return
@@ -117,6 +138,7 @@ export async function processFollowBackfill(env: Env, follow: FollowBackfillPayl
 		scanned = 0
 	const selected = new Map<string, Note | Question>()
 	while (page && pages < 2 && scanned < 40) {
+		checkDeadline()
 		if (page.id) {
 			if (page.id.origin !== origin || visited.has(page.id.href)) break
 			visited.add(page.id.href)
@@ -133,13 +155,14 @@ export async function processFollowBackfill(env: Env, follow: FollowBackfillPayl
 		}
 		pages++
 		for (const entry of entries) {
+			checkDeadline()
 			scanned++
 			try {
 				let item: ASObject | null
 				if (typeof entry === 'string') {
 					const id = new URL(entry)
 					if (!permit(id)) continue
-					item = await ctx.lookupObject(id, { documentLoader })
+					item = await readObject(id.href)
 				} else if (entry && typeof entry === 'object')
 					item = await ASObject.fromJsonLd({ '@context': raw['@context'], ...entry }, loaders)
 				else continue
@@ -185,9 +208,11 @@ export async function processFollowBackfill(env: Env, follow: FollowBackfillPayl
 		.slice(0, 20)
 	// Oldest first retains chronological order while preserving source dates.
 	for (const status of recent.reverse()) {
+		checkDeadline()
 		if (!(await allowed(env, follow))) return
 		if (await one<StatusRow>(env, 'SELECT * FROM statuses WHERE uri=?', status.id!.href)) continue
 		try {
+			checkDeadline()
 			await persistStatus(ctx, status, remote, 2, {
 				quiet: true,
 				documentLoader,

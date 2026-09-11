@@ -233,7 +233,7 @@ it.each(['cycle', 'foreign'])('stops %s collection pagination', async (kind) => 
 
 it('rechecks an unfollow that happens during the outbox fetch before saving any posts', async () => {
 	const { payload } = await setup(),
-		fetch = globalThis.fetch
+		fetch = vi.mocked(globalThis.fetch).getMockImplementation()!
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
 		const response = await fetch(input, init)
 		if (new Request(input, init).url === outboxUri) await run(env, 'DELETE FROM follows')
@@ -327,4 +327,58 @@ it('queues missing history on home reads and retains the completed receipt until
 	await run(env, 'DELETE FROM follows')
 	await sweep(env)
 	expect(await one(env, 'SELECT id FROM jobs WHERE id=?', job.id)).toBeNull()
+})
+
+it('passes the request timeout through signed fetch and leaves the durable job retryable when the remote stalls', async () => {
+	const { payload, requests } = await setup(),
+		controller = new AbortController(),
+		timeout = AbortSignal.timeout.bind(AbortSignal),
+		fetch = vi.mocked(globalThis.fetch).getMockImplementation()!
+	vi.spyOn(AbortSignal, 'timeout').mockImplementation((duration) =>
+		duration === 20000 ? controller.signal : timeout(duration)
+	)
+	let propagated = false
+	vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+		if (new Request(input, init).url !== outboxUri) return fetch(input, init)
+		const signal = init?.signal
+		expect(signal).toBeInstanceOf(AbortSignal)
+		return new Promise<Response>((_resolve, reject) => {
+			signal!.addEventListener(
+				'abort',
+				() => {
+					propagated = true
+					reject(signal!.reason)
+				},
+				{ once: true }
+			)
+			controller.abort(new DOMException('Remote response timed out', 'TimeoutError'))
+		})
+	})
+	vi.spyOn(console, 'error').mockImplementation(() => {})
+	await (await followBackfillStatement(env, payload)).run()
+	const job = (await one<JobRow>(env, "SELECT * FROM jobs WHERE kind='federation.backfill'"))!
+	await executeJob(env, job.id)
+	expect(propagated).toBe(true)
+	expect(await one<JobRow>(env, 'SELECT * FROM jobs WHERE id=?', job.id)).toMatchObject({
+		state: 'pending',
+		attempt: 1,
+		lease_token: null,
+	})
+	expect(requests).toEqual([actorUri])
+	expect(await all(env, 'SELECT id FROM statuses')).toHaveLength(0)
+})
+
+it('stops the whole attempt before persisting history once its deadline has passed', async () => {
+	const { payload } = await setup(),
+		fetch = vi.mocked(globalThis.fetch).getMockImplementation()!,
+		now = Date.now.bind(Date)
+	let elapsed = 0
+	vi.spyOn(Date, 'now').mockImplementation(() => now() + elapsed)
+	vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+		const response = await fetch(input, init)
+		if (new Request(input, init).url === outboxUri) elapsed = 120001
+		return response
+	})
+	await expect(processFollowBackfill(env, payload)).rejects.toMatchObject({ name: 'TimeoutError' })
+	expect(await all(env, 'SELECT id FROM statuses')).toHaveLength(0)
 })
