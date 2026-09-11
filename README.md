@@ -18,7 +18,7 @@ The web interface works on desktop and mobile. Administrators can manage invitat
 
 Open your server's website and choose **Sign in**. Registration is closed by default; if you do not have an account, ask the server owner for an invitation. If you are setting up your own server, follow the hosting guide below to create its first account.
 
-After signing in, update your profile in **Settings**, search for someone using their full address (such as `@someone@their-server.example`), and follow them. Their new posts will appear in **Home**.
+After signing in, update your profile in **Settings**, search for someone using their full address (such as `@someone@their-server.example`), and follow them. Once the follow is accepted, Hyena fetches up to 20 recent public posts to fill **Home**, and new posts arrive automatically. The initial posts can take a few minutes to appear; refresh Home in your browser or Mastodon app. Some servers do not share past posts.
 
 The follow button shows **Requested** while the other server processes the request or the person approves it, then **Following** once accepted. Select it again to cancel or unfollow. If your profile requires follower approval, incoming requests are under **Notifications → Follow requests**.
 

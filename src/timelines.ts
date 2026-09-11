@@ -7,6 +7,7 @@ import { statusJSON } from './serializers'
 import { ApiError } from './http'
 import { limitedAccountSQL } from './moderation-policy'
 import type { AppEnv, StatusRow } from './types'
+import { queueFollowBackfill } from './federation/backfill'
 
 export const timelines = new Hono<AppEnv>()
 export type TimelineMode = 'public' | 'home' | 'account' | 'tag' | 'list' | 'link'
@@ -27,6 +28,13 @@ export async function timeline(c: Context<AppEnv>, mode: TimelineMode, id?: stri
 		)
 	}
 	if (mode === 'home') {
+		// Repair follows created before automatic history fetching existed.
+		// Network work runs in durable jobs and never delays this page.
+		c.executionCtx.waitUntil(
+			queueFollowBackfill(c.env, viewer!).catch(() => {
+				console.error(JSON.stringify({ event: 'timeline_backfill_queue_failed' }))
+			})
+		)
 		clauses.push(
 			`(account_id=? OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=? AND f.following_id=statuses.account_id AND f.state='accepted' AND (statuses.reblog_of_id IS NULL OR f.reblogs=1) AND (f.languages='[]' OR statuses.language IS NULL OR EXISTS(SELECT 1 FROM json_each(f.languages) WHERE value=statuses.language))) OR (visibility='public' AND EXISTS(SELECT 1 FROM status_tags t JOIN account_tags f ON f.tag=t.tag WHERE t.status_id=statuses.id AND f.account_id=? AND f.kind='follow')))`
 		)
