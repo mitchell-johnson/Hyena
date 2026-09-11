@@ -70,7 +70,11 @@ export function safeUrl(value: unknown): string | null {
 		return null
 	}
 }
-export async function persistActor(ctx: Context<Env>, actor: Actor): Promise<AccountRow> {
+export async function persistActor(
+	ctx: Context<Env>,
+	actor: Actor,
+	documentLoader?: Context<Env>['documentLoader']
+): Promise<AccountRow> {
 	if (!actor.id || !actor.preferredUsername || !actor.inboxId) throw new ApiError(422, 'Incomplete remote actor')
 	const uri = actor.id.href,
 		domain = actor.id.hostname
@@ -87,10 +91,13 @@ export async function persistActor(ctx: Context<Env>, actor: Actor): Promise<Acc
 	const existing = await one<AccountRow>(ctx.data, 'SELECT * FROM accounts WHERE uri=?', uri),
 		id = existing?.id ?? (await nextId(ctx.data.DB)),
 		json = (await actor.toJsonLd()) as Record<string, unknown>
-	const icon = await actor.getIcon(ctx),
-		image = await actor.getImage(ctx),
+	const loaders = documentLoader
+			? { documentLoader, contextLoader: ctx.contextLoader, tracerProvider: ctx.tracerProvider }
+			: ctx,
+		icon = await actor.getIcon(loaders),
+		image = await actor.getImage(loaders),
 		attachments = []
-	for await (const field of actor.getAttachments(ctx)) {
+	for await (const field of actor.getAttachments(loaders)) {
 		const f = (await field.toJsonLd()) as Record<string, unknown>
 		if (f.type === 'PropertyValue' && attachments.length < 4)
 			attachments.push({ name: text(f.name).slice(0, 255), value: cleanHtml(text(f.value)), verified_at: null })

@@ -31,7 +31,7 @@ export async function postExtras(
 		pieces.push(escapeHtml(text.slice(end, match.index)))
 		const token = match[0]
 		if (token.startsWith('@')) {
-			const a = await resolveAccount(env, token)
+			const a = await resolveAccount(env, token, undefined, account.username)
 			if (await blocked(env, account.id, a.id)) throw new ApiError(422, 'Cannot mention a blocked account')
 			if (!mentions.some((m) => m.id === a.id)) mentions.push(a)
 			pieces.push(

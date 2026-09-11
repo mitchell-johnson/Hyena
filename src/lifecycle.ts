@@ -305,7 +305,7 @@ export async function processImport(env: Env, id: string) {
 				)
 				continue
 			}
-			const target = await resolveAccount(env, task.kind === 'lists' ? (row[1] ?? '') : value),
+			const target = await resolveAccount(env, task.kind === 'lists' ? (row[1] ?? '') : value, undefined, a.username),
 				rid = await nextId(env.DB)
 			if (target.id === a.id) continue
 			if (task.kind === 'following' || task.kind === 'lists') {
@@ -591,7 +591,7 @@ lifecycle.get('/api/hyena/exports/:id/:file', async (c) => {
 lifecycle.post('/api/hyena/account/aliases', async (c) => {
 	const input = await readInput(c.req.raw),
 		{ account: a } = await requireWeb(c, input),
-		target = await resolveAccount(c.env, stringField(input, 'acct')),
+		target = await resolveAccount(c.env, stringField(input, 'acct'), undefined, a.username),
 		aliases = parsed<string[]>(a.aliases, []),
 		uri = accountUri(c.env, target),
 		remove = boolField(input, 'remove')
@@ -614,7 +614,7 @@ lifecycle.post('/api/hyena/account/move', async (c) => {
 		{ account: a } = await requireWeb(c, input)
 	if (!verifyPassword(stringField(input, 'password'), a.password_hash))
 		throw new ApiError(403, 'Current password is incorrect')
-	const target = await resolveAccount(c.env, stringField(input, 'acct'))
+	const target = await resolveAccount(c.env, stringField(input, 'acct'), undefined, a.username)
 	if (target.id === a.id || !parsed<string[]>(target.aliases, []).includes(accountUri(c.env, a)))
 		throw new ApiError(422, 'The destination must first declare this account as an alias')
 	const recipients = (

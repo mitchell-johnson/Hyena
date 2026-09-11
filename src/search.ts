@@ -70,7 +70,7 @@ search.get('/api/v1/accounts/search', async (c) => {
 	if (!q || q.length > 500) throw new ApiError(422, 'Invalid search query')
 	const resolved =
 		c.req.query('resolve') === 'true' && /[@:/]/.test(q)
-			? await resolveAccount(c.env, q).catch((error) => {
+			? await resolveAccount(c.env, q, undefined, c.get('account').username).catch((error) => {
 					resolutionFailed(error)
 					return null
 				})
@@ -108,14 +108,15 @@ search.get('/api/v2/search', async (c) => {
 	let resolvedId: string | null = null
 	if (c.req.query('resolve') === 'true' && /^(https:\/\/|@?[^\s@]+@)/.test(q)) {
 		try {
-			if (type === 'accounts') resolvedId = (await resolveAccount(c.env, q)).id
+			if (type === 'accounts') resolvedId = (await resolveAccount(c.env, q, undefined, c.get('account').username)).id
 			else {
-				const ctx = (await federation(c.env)).createContext(new URL(c.env.PUBLIC_ORIGIN), c.env)
-				const found = await ctx.lookupObject(q)
-				if (found && isActor(found)) resolvedId = (await persistActor(ctx, found)).id
+				const ctx = (await federation(c.env)).createContext(new URL(c.env.PUBLIC_ORIGIN), c.env),
+					documentLoader = await ctx.getDocumentLoader({ identifier: c.get('account').username }),
+					found = await ctx.lookupObject(q, { documentLoader })
+				if (found && isActor(found)) resolvedId = (await persistActor(ctx, found, documentLoader)).id
 				else if (found?.attributionId) {
-					const actor = await ctx.lookupObject(found.attributionId)
-					if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor))
+					const actor = await ctx.lookupObject(found.attributionId, { documentLoader })
+					if (actor && isActor(actor)) await persistStatus(ctx, found, await persistActor(ctx, actor, documentLoader))
 				}
 			}
 		} catch (error) {

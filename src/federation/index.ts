@@ -291,7 +291,12 @@ export async function federationMessage(
 			processing.token
 		)
 }
-export async function resolveAccount(env: Env, handle: string, context?: Context<Env>): Promise<AccountRow> {
+export async function resolveAccount(
+	env: Env,
+	handle: string,
+	context?: Context<Env>,
+	identifier?: string
+): Promise<AccountRow> {
 	const parts = handle.replace(/^@/, '').split('@')
 	if (!/^https?:/.test(handle)) {
 		const domain = isLocalAccountDomain(env, parts[1]) ? '' : parts[1]!
@@ -305,9 +310,13 @@ export async function resolveAccount(env: Env, handle: string, context?: Context
 		if (!domain) throw new ApiError(422, 'Mentioned account does not exist')
 	}
 	const ctx = context ?? (await federation(env)).createContext(new URL(env.PUBLIC_ORIGIN), env),
-		actor = await ctx.lookupObject(handle)
+		documentLoader = identifier ? await ctx.getDocumentLoader({ identifier }) : undefined,
+		// Mastodon secure mode requires a signed GET even for public actor profiles.
+		// Search supplies the requesting local actor; existing inbox contexts keep
+		// their own document loader when no explicit identity is supplied.
+		actor = await ctx.lookupObject(handle, documentLoader ? { documentLoader } : undefined)
 	if (!actor || !isActor(actor)) throw new ApiError(422, 'Account could not be resolved')
-	return persistActor(ctx, actor)
+	return persistActor(ctx, actor, documentLoader)
 }
 export async function sendStored(
 	env: Env,
