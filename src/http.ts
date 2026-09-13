@@ -65,6 +65,9 @@ export async function readInput(request: Request, maxBytes = 65536): Promise<Rec
 			reader.releaseLock()
 		}
 	}
+	// HTTP clients can send an empty POST as a non-null, zero-byte stream.
+	// Treat it like an absent body before requiring a serialization format.
+	if (size === 0) return {}
 	const bytes = new Uint8Array(size)
 	let offset = 0
 	for (const chunk of chunks) {
