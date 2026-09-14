@@ -20,6 +20,8 @@ Open your server's website and choose **Sign in**. Registration is closed by def
 
 After signing in, update your profile in **Settings**, search for someone using their full address (such as `@someone@their-server.example`), and follow them. Once the follow is accepted, Hyena fetches up to 20 recent public posts to fill **Home**, and new posts arrive automatically. The initial posts can take a few minutes to appear; refresh Home in your browser or Mastodon app. Some servers do not share past posts.
 
+Home and discovery features such as Explore and hashtags require sign-in. Hyena has no public Live feed of posts collected from other servers. Your public profile and posts remain available according to the audience you choose.
+
 The follow button shows **Requested** while the other server processes the request or the person approves it, then **Following** once accepted. Select it again to cancel or unfollow. If your profile requires follower approval, incoming requests are under **Notifications → Follow requests**.
 
 When a new follower from another server is accepted (automatically unless your profile requires approval), Hyena shares up to 20 of your recent public posts with their original dates and delivers future posts normally. These recent posts can take a few minutes to arrive; to find an older post, search for its exact URL.

@@ -10,7 +10,7 @@ import type { AccountRow, AppEnv, Env } from './types'
 export const VERSION = '0.2.0-alpha.1'
 export const instance = new Hono<AppEnv>()
 export async function configuration(env: Env) {
-	const access = { local: 'public', remote: 'public' }
+	const access = { local: 'authenticated', remote: 'authenticated' }
 	return {
 		urls: {
 			streaming: env.PUBLIC_ORIGIN.replace(/^http/, 'ws'),
@@ -43,7 +43,11 @@ export async function configuration(env: Env) {
 		},
 		polls: { max_options: 4, max_characters_per_option: 50, min_expiration: 300, max_expiration: 2629746 },
 		translation: { enabled: !!env.TRANSLATION },
-		timelines_access: { live_feeds: access, hashtag_feeds: access, trending_link_feeds: access },
+		timelines_access: {
+			live_feeds: { local: 'disabled', remote: 'disabled' },
+			hashtag_feeds: access,
+			trending_link_feeds: access,
+		},
 		limited_federation: await setting(env, 'limited_federation', false),
 	}
 }

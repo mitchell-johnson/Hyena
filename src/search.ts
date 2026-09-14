@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { isLocalAccountDomain } from './identity'
-import { authenticate, optionalAccount } from './auth/access'
+import { authenticate } from './auth/access'
 import { all, one, run, pageLimit, accountById } from './data'
 import { ApiError } from './http'
 import { accountJSON, statusJSON } from './serializers'
@@ -169,7 +169,7 @@ search.get('/api/v2/search', async (c) => {
 	return c.json({ accounts, statuses: await Promise.all(rows.map((s) => statusJSON(c.env, s, viewer))), hashtags })
 })
 search.get('/api/v1/directory', async (c) => {
-	const viewer = await optionalAccount(c),
+	const viewer = (await authenticate(c, 'read:accounts')).account_id,
 		offset = Number(c.req.query('offset') ?? 0)
 	if (!Number.isInteger(offset) || offset < 0 || offset > 10000) throw new ApiError(422, 'Invalid offset')
 	const order = c.req.query('order') === 'new' ? 'created_at' : 'last_seen_at'
