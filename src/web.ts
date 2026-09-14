@@ -103,11 +103,10 @@ for (const method of ['post', 'put', 'delete'] as const)
 		)
 	})
 function shell(title: string, csrf = '') {
-	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#173c32"><meta name="csrf-token" content="${escapeHtml(csrf)}"><title>${escapeHtml(title)} · Hyena</title><link rel="stylesheet" href="/assets/app.css"><link rel="manifest" href="/manifest.webmanifest"><script type="module" src="/assets/app.js"></script></head><body><a class="skip" href="#content">Skip to content</a><div class="layout"><aside class="sidebar"><a class="brand" href="/">HYENA<span>your home on the fediverse</span></a><nav aria-label="Main"><a href="/" data-view="home">Home</a><a href="/public" data-view="public">Live feed</a><a href="/explore" data-view="explore">Explore</a><a href="/notifications" data-view="notifications">Notifications</a><a href="/conversations" data-view="conversations">Conversations</a><a href="/bookmarks" data-view="bookmarks">Bookmarks</a><a href="/favourites" data-view="favourites">Favourites</a><a href="/lists" data-view="lists">Lists</a><a href="/collections" data-view="collections">Collections</a><a href="/scheduled_statuses" data-view="scheduled">Scheduled posts</a><a href="/search" data-view="search">Search</a><a href="/annual_reports">Annual reports</a><a href="/settings" data-view="settings">Settings</a><a href="/admin" data-view="admin" hidden id="admin-link">Administration</a></nav><div id="identity"></div><a href="/about">About this instance</a></aside><main id="content" tabindex="-1"><header class="view-header"><h1 id="view-title">Home</h1><button id="refresh" class="quiet">Refresh</button></header><div id="message" role="status" aria-live="polite"></div><section id="composer" hidden></section><section id="view" aria-busy="true"><p class="muted">Loading…</p></section><button id="more" hidden>Load more</button></main><aside class="context"><h2>A little more human.</h2><p>Post a thought. Find your people. Keep the conversation going.</p><p id="instance-description"></p><a href="/settings/apps">Connect a Mastodon app</a><p class="muted">Media must be shorter than 60 seconds.</p><div id="announcements"></div></aside></div></body></html>`
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#173c32"><meta name="csrf-token" content="${escapeHtml(csrf)}"><title>${escapeHtml(title)} · Hyena</title><link rel="stylesheet" href="/assets/app.css"><link rel="manifest" href="/manifest.webmanifest"><script type="module" src="/assets/app.js"></script></head><body><a class="skip" href="#content">Skip to content</a><div class="layout"><aside class="sidebar"><a class="brand" href="/">HYENA<span>your home on the fediverse</span></a><nav aria-label="Main"><a href="/" data-view="home">Home</a><a href="/explore" data-view="explore">Explore</a><a href="/notifications" data-view="notifications">Notifications</a><a href="/conversations" data-view="conversations">Conversations</a><a href="/bookmarks" data-view="bookmarks">Bookmarks</a><a href="/favourites" data-view="favourites">Favourites</a><a href="/lists" data-view="lists">Lists</a><a href="/collections" data-view="collections">Collections</a><a href="/scheduled_statuses" data-view="scheduled">Scheduled posts</a><a href="/search" data-view="search">Search</a><a href="/annual_reports">Annual reports</a><a href="/settings" data-view="settings">Settings</a><a href="/admin" data-view="admin" hidden id="admin-link">Administration</a></nav><div id="identity"></div><a href="/about">About this instance</a></aside><main id="content" tabindex="-1"><header class="view-header"><h1 id="view-title">Home</h1><button id="refresh" class="quiet">Refresh</button></header><div id="message" role="status" aria-live="polite"></div><section id="composer" hidden></section><section id="view" aria-busy="true"><p class="muted">Loading…</p></section><button id="more" hidden>Load more</button></main><aside class="context"><h2>A little more human.</h2><p>Post a thought. Find your people. Keep the conversation going.</p><p id="instance-description"></p><a href="/settings/apps">Connect a Mastodon app</a><p class="muted">Media must be shorter than 60 seconds.</p><div id="announcements"></div></aside></div></body></html>`
 }
 for (const path of [
 	'/',
-	'/public',
 	'/explore',
 	'/notifications',
 	'/conversations',
@@ -128,14 +127,7 @@ for (const path of [
 ])
 	web.get(path, async (c) => {
 		const session = await webSession(c)
-		if (
-			!session &&
-			path !== '/public' &&
-			path !== '/explore' &&
-			path !== '/tags/:tag' &&
-			path !== '/collections/:id' &&
-			path !== '/'
-		) {
+		if (!session && path !== '/collections/:id' && path !== '/') {
 			return c.redirect('/login')
 		}
 		if (!session && path === '/') {
@@ -146,7 +138,7 @@ for (const path of [
 			return c.html(
 				page(
 					c.env.INSTANCE_TITLE,
-					`<h1>${escapeHtml(c.env.INSTANCE_TITLE)}</h1><p>${escapeHtml(c.env.INSTANCE_DESCRIPTION)}</p><nav><a href="/login">Sign in</a><a href="/public">Read the live feed</a>${c.env.REGISTRATIONS === 'open' || c.env.REGISTRATIONS === 'approved' ? '<a href="/auth/sign_up">Create account</a>' : ''}</nav>${owner ? `<p><a href="/@${escapeHtml(owner.username)}">@${escapeHtml(owner.username)}</a></p>` : '<a href="/setup">Create your owner account</a>'}<p><a href="/about">About</a> · <a href="/privacy-policy">Privacy</a></p>`
+					`<h1>${escapeHtml(c.env.INSTANCE_TITLE)}</h1><p>${escapeHtml(c.env.INSTANCE_DESCRIPTION)}</p><nav><a href="/login">Sign in</a>${c.env.REGISTRATIONS === 'open' || c.env.REGISTRATIONS === 'approved' ? '<a href="/auth/sign_up">Create account</a>' : ''}</nav>${owner ? `<p><a href="/@${escapeHtml(owner.username)}">@${escapeHtml(owner.username)}</a></p>` : '<a href="/setup">Create your owner account</a>'}<p><a href="/about">About</a> · <a href="/privacy-policy">Privacy</a></p>`
 				)
 			)
 		}

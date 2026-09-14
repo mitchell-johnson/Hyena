@@ -407,8 +407,7 @@ async function load() {
 	const path = location.pathname,
 		view = path.split('/')[1] || 'home'
 	document.querySelector('#view-title').textContent =
-		{ home: 'Home', public: 'Live feed', scheduled_statuses: 'Scheduled posts' }[view] ??
-		view.charAt(0).toUpperCase() + view.slice(1)
+		{ home: 'Home', scheduled_statuses: 'Scheduled posts' }[view] ?? view.charAt(0).toUpperCase() + view.slice(1)
 	try {
 		if (view === 'accounts') await profileDetail(root, path.split('/')[2], compose)
 		else if (view === 'statuses' || (view.startsWith('@') && path.split('/')[2]))
@@ -423,7 +422,6 @@ async function load() {
 		else if (path.startsWith('/settings')) await settings(root)
 		else if (view === 'admin') await administration(root)
 		else if (view === 'home') await feed('/api/v1/timelines/home')
-		else if (view === 'public') await feed('/api/v1/timelines/public')
 		else if (view === 'bookmarks' || view === 'favourites') await feed('/api/v1/' + view)
 		else if (view === 'notifications') await notices()
 		else if (view === 'lists') await listManager()

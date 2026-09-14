@@ -36,8 +36,10 @@ await page.getByRole('button', { name: 'Post', exact: true }).click()
 await page.locator('#view .post').first().waitFor()
 const id = await page.locator('#view .post').first().getAttribute('data-id')
 const owner = await page.evaluate(async () => (await (await fetch('/api/hyena/session')).json()).account.id)
+const removedFeed = await page.request.get(origin + '/public')
+if (removedFeed.status() !== 404) failures.push({ path: '/public', status: removedFeed.status() })
+if (await page.locator('a[href="/public"]').count()) failures.push({ path: '/', message: 'Live feed link remains' })
 const routes = [
-	'/public',
 	'/notifications',
 	'/conversations',
 	'/bookmarks',

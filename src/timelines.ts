@@ -10,23 +10,17 @@ import type { AppEnv, StatusRow } from './types'
 import { queueFollowBackfill } from './federation/backfill'
 
 export const timelines = new Hono<AppEnv>()
-export type TimelineMode = 'public' | 'home' | 'account' | 'tag' | 'list' | 'link'
+export type TimelineMode = 'home' | 'account' | 'tag' | 'list' | 'link'
 export async function timeline(c: Context<AppEnv>, mode: TimelineMode, id?: string) {
-	const viewer = ['home', 'list'].includes(mode)
+	const viewer = ['home', 'list', 'tag', 'link'].includes(mode)
 			? (await authenticate(c, 'read:statuses')).account_id
 			: await optionalAccount(c),
 		p = audienceSQL(viewer),
 		m = mutedSQL(viewer),
 		clauses = [p.sql, m.sql],
 		binds: Bind[] = [...p.binds, ...m.binds]
-	if (['public', 'tag', 'link'].includes(mode))
+	if (['tag', 'link'].includes(mode))
 		clauses.push(`NOT EXISTS(SELECT 1 FROM accounts a WHERE a.id=statuses.account_id AND ${limitedAccountSQL()})`)
-	if (mode === 'public') {
-		clauses.push(
-			"visibility='public'",
-			'NOT EXISTS(SELECT 1 FROM accounts a WHERE a.id=statuses.account_id AND a.silenced=1)'
-		)
-	}
 	if (mode === 'home') {
 		// Repair follows created before automatic history fetching existed.
 		// Network work runs in durable jobs and never delays this page.
@@ -140,7 +134,9 @@ export async function timeline(c: Context<AppEnv>, mode: TimelineMode, id?: stri
 	return c.json(entities)
 }
 timelines.get('/api/v1/timelines/home', (c) => timeline(c, 'home'))
-timelines.get('/api/v1/timelines/public', (c) => timeline(c, 'public'))
+timelines.get('/api/v1/timelines/public', () => {
+	throw new ApiError(404, 'Public live feed is unavailable')
+})
 timelines.get('/api/v1/timelines/tag/:id', (c) => timeline(c, 'tag', c.req.param('id')))
 timelines.get('/api/v1/timelines/list/:id', (c) => timeline(c, 'list', c.req.param('id')))
 timelines.get('/api/v1/timelines/link', (c) => timeline(c, 'link'))

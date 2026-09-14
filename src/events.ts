@@ -64,9 +64,6 @@ export async function statusEvent(env: Env, s: StatusRow) {
 			sources.push('user')
 		if (s.visibility === 'direct' && (owner || mentioned)) sources.push('direct')
 		if (s.visibility === 'public' && !limited) {
-			sources.push('public', s.local ? 'public:local' : 'public:remote')
-			if (await one(env, 'SELECT 1 FROM media_attachments WHERE status_id=?', s.id))
-				sources.push('public:media', s.local ? 'public:local:media' : 'public:remote:media')
 			for (const t of tags) {
 				sources.push('hashtag|' + t.tag)
 				if (s.local) sources.push('hashtag:local|' + t.tag)

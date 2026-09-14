@@ -14,7 +14,7 @@ it('applies new domain rules to cached posts and notifications, and restores rea
 	const s = await json<{ id: string }>('/api/v1/statuses', {
 		token: remote.token,
 		method: 'POST',
-		body: { status: 'Existing remote post' },
+		body: { status: 'Existing remote post #moderation' },
 	})
 	await env.DB.prepare(
 		"UPDATE accounts SET domain='sub.example.net',uri='https://sub.example.net/users/remote' WHERE id=?"
@@ -28,7 +28,8 @@ it('applies new domain rules to cached posts and notifications, and restores rea
 		method: 'POST',
 		body: { domain: 'example.net', severity: 'silence' },
 	})
-	expect(await json('/api/v1/timelines/public')).toEqual([])
+	expect((await request('/api/v1/timelines/public')).status).toBe(404)
+	expect(await json('/api/v1/timelines/tag/moderation', { token: owner.token })).toEqual([])
 	expect((await request('/api/v1/statuses/' + s.id, { token: owner.token })).status).toBe(200)
 	await json('/api/v1/admin/domain_blocks/' + rule.id, {
 		token: owner.token,
@@ -212,7 +213,8 @@ it('calculates real public link usage while excluding private and newly moderate
 		})
 		await env.DB.prepare('UPDATE statuses SET card=? WHERE id=?').bind(JSON.stringify(card), s.id).run()
 	}
-	const read = () => json<{ history: { uses: string; accounts: string }[] }[]>('/api/v1/trends/links')
+	const read = () =>
+		json<{ history: { uses: string; accounts: string }[] }[]>('/api/v1/trends/links', { token: owner.token })
 	expect((await read())[0]?.history[0]).toMatchObject({ uses: '2', accounts: '2' })
 	await env.DB.prepare("UPDATE accounts SET domain='remote.example' WHERE id=?").bind(remote.id).run()
 	await json('/api/v1/admin/domain_blocks', {

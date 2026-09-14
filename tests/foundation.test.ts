@@ -429,7 +429,7 @@ describe('posting and durability', () => {
 		expect((await json('/api/v1/statuses', { status: 'changed' }, raw, { 'Idempotency-Key': 'same' })).status).toBe(409)
 	})
 	it('enforces visibility, reply privacy, edits, deletion and pagination', async () => {
-		const { raw } = await seed()
+		const { id, raw } = await seed()
 		const privatePost = await (
 			await json('/api/v1/statuses', { status: 'private', visibility: 'private' }, raw)
 		).json<{ id: string }>()
@@ -447,9 +447,12 @@ describe('posting and durability', () => {
 			await request(`/api/v1/statuses/${publicPost.id}/context`)
 		).json<{ descendants: unknown[] }>()
 		expect(context.descendants).toEqual([])
-		const publicFeed = await request('/api/v1/timelines/public?limit=1')
-		expect((await publicFeed.json<{ id: string }[]>()).map((s) => s.id)).toEqual([publicPost.id])
-		expect(publicFeed.headers.get('Link')).toContain('max_id=')
+		expect((await request('/api/v1/timelines/public?limit=1')).status).toBe(404)
+		const accountFeed = await request(`/api/v1/accounts/${id}/statuses?limit=1&exclude_replies=true`, {
+			headers: { Authorization: `Bearer ${raw}` },
+		})
+		expect((await accountFeed.json<{ id: string }[]>()).map((s) => s.id)).toEqual([publicPost.id])
+		expect(accountFeed.headers.get('Link')).toContain('max_id=')
 		const edited = await request('/api/v1/statuses/' + publicPost.id, {
 			method: 'PUT',
 			headers: { Authorization: `Bearer ${raw}`, 'Content-Type': 'application/json' },

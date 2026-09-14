@@ -8,6 +8,12 @@ export const streaming = new Hono<AppEnv>()
 streaming.get('/api/v1/streaming/*', gateway)
 streaming.get('/api/v1/streaming', gateway)
 async function gateway(c: Context<AppEnv>) {
+	const url = new URL(c.req.url),
+		suffix = c.req.path.slice('/api/v1/streaming/'.length),
+		pathStream = c.req.path !== '/api/v1/streaming' && suffix ? suffix.replaceAll('/', ':') : null
+	if ([url.searchParams.get('stream'), pathStream].some((name) => name === 'public' || name?.startsWith('public:')))
+		throw new ApiError(404, 'Stream not found')
+	if (pathStream) url.searchParams.set('stream', pathStream)
 	const protocols =
 			c.req
 				.header('Sec-WebSocket-Protocol')
@@ -24,9 +30,6 @@ async function gateway(c: Context<AppEnv>) {
 		)
 	)
 		throw new ApiError(403, 'Missing read:statuses scope')
-	const url = new URL(c.req.url),
-		suffix = c.req.path.slice('/api/v1/streaming/'.length)
-	if (c.req.path !== '/api/v1/streaming' && suffix) url.searchParams.set('stream', suffix.replaceAll('/', ':'))
 	const headers = new Headers({ Upgrade: 'websocket', 'X-Hyena-Token': token.token_hash })
 	if (protocols.includes(raw ?? '')) headers.set('Sec-WebSocket-Protocol', raw!)
 	const response = await c.env.STREAMS.get(c.env.STREAMS.idFromName(token.account_id)).fetch(

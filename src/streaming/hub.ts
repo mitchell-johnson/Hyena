@@ -14,20 +14,7 @@ export interface StatusEvent {
 	public: boolean
 	sources?: string[]
 }
-const supported = new Set([
-	'user',
-	'user:notification',
-	'public',
-	'public:local',
-	'public:remote',
-	'public:media',
-	'public:local:media',
-	'public:remote:media',
-	'direct',
-	'hashtag',
-	'hashtag:local',
-	'list',
-])
+const supported = new Set(['user', 'user:notification', 'direct', 'hashtag', 'hashtag:local', 'list'])
 
 export class StreamHub extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -47,6 +34,7 @@ export class StreamHub extends DurableObject<Env> {
 		const params = new URL(request.url).searchParams
 		const name = params.get('stream'),
 			stream = name ? await this.subscription(name, params.get('tag') ?? params.get('list'), tokenHash) : null
+		if (name === 'public' || name?.startsWith('public:')) return new Response('Stream not found', { status: 404 })
 		if (name && !stream) return new Response('Stream not implemented', { status: 400 })
 		const pair = new WebSocketPair()
 		this.ctx.acceptWebSocket(pair[1])
@@ -126,7 +114,7 @@ export class StreamHub extends DurableObject<Env> {
 			}
 			if (event === 'notification' && !permits(token.scopes, 'read:notifications')) continue
 			for (const stream of state.streams)
-				if (streams.includes(stream))
+				if (supported.has(stream.split('|')[0]!) && streams.includes(stream))
 					try {
 						socket.send(JSON.stringify({ stream: stream.split('|'), event, payload }))
 					} catch {
@@ -158,7 +146,10 @@ export class StreamHub extends DurableObject<Env> {
 				continue
 			}
 			for (const stream of state.streams) {
-				if (event.sources ? !event.sources.includes(stream) : stream !== 'user' && !event.public) continue
+				// Hibernated sockets retain attachments across deploys. Removed streams
+				// must stay disabled even for queued events containing their old sources.
+				if (!supported.has(stream.split('|')[0]!)) continue
+				if (event.sources ? !event.sources.includes(stream) : stream !== 'user') continue
 				try {
 					socket.send(JSON.stringify({ stream: stream.split('|'), event: event.event, payload: event.payload }))
 				} catch {

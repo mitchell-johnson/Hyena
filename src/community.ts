@@ -307,12 +307,12 @@ async function trendItems(env: Env, kind: string, viewer: string | null, limit: 
 	)
 }
 community.get('/api/v1/trends', async (c) =>
-	c.json(await trendItems(c.env, 'tags', await optionalAccount(c), pageLimit(c, 20, 10)))
+	c.json(await trendItems(c.env, 'tags', (await authenticate(c, 'read:statuses')).account_id, pageLimit(c, 20, 10)))
 )
 for (const kind of ['tags', 'links', 'statuses', 'publishers']) {
 	if (kind !== 'publishers')
 		community.get('/api/v1/trends/' + kind, async (c) =>
-			c.json(await trendItems(c.env, kind, await optionalAccount(c), pageLimit(c, 40, 10)))
+			c.json(await trendItems(c.env, kind, (await authenticate(c, 'read:statuses')).account_id, pageLimit(c, 40, 10)))
 		)
 	const path = '/api/v1/admin/trends/' + (kind === 'publishers' ? 'links/publishers' : kind)
 	community.get(path, async (c) => {
